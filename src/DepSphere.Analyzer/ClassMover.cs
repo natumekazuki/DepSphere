@@ -57,6 +57,41 @@ public static class ClassMover
         return new MoveFileResult(context.SourceFilePath, resolvedTargetFilePath);
     }
 
+    public static async Task<MoveProjectResult> MoveProjectAsync(
+        string sourceProjectPath,
+        string targetProjectPath,
+        string typeFqn,
+        string? targetRelativePath = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(targetProjectPath))
+        {
+            throw new ArgumentException("Target project path is required.", nameof(targetProjectPath));
+        }
+
+        if (!File.Exists(targetProjectPath))
+        {
+            throw new FileNotFoundException("Target project file does not exist.", targetProjectPath);
+        }
+
+        var context = await LoadTypeContextAsync(sourceProjectPath, typeFqn, cancellationToken);
+        var relativePath = string.IsNullOrWhiteSpace(targetRelativePath)
+            ? context.TypeName + ".cs"
+            : targetRelativePath;
+        var resolvedTargetFilePath = ResolveTargetFilePath(targetProjectPath, relativePath);
+
+        await RemoveTypeFromSourceAsync(context, cancellationToken);
+
+        var movedSource = BuildMovedSource(context.SourceNamespace, context.SourceNamespace, context.TypeDeclaration);
+        await WriteMovedFileAsync(resolvedTargetFilePath, movedSource, cancellationToken);
+
+        return new MoveProjectResult(
+            context.SourceFilePath,
+            resolvedTargetFilePath,
+            sourceProjectPath,
+            targetProjectPath);
+    }
+
     private static async Task<TypeDeclarationContext> LoadTypeContextAsync(
         string csprojPath,
         string typeFqn,

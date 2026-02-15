@@ -66,6 +66,51 @@ public class ClassMoverTests
         Assert.Equal(result.TargetFilePath, movedNode.Location!.FilePath);
     }
 
+    [Fact]
+    public async Task プロジェクト間移動で移動先プロジェクトへクラスを移せる()
+    {
+        var workspaceRoot = CopyFixtureToTemp();
+        var sourceProjectPath = Path.Combine(workspaceRoot, "SampleLib", "SampleLib.csproj");
+        var targetProjectPath = Path.Combine(workspaceRoot, "TargetLib", "TargetLib.csproj");
+        var targetRelativePath = Path.Combine("Migrated", "ImplFromSample.cs");
+
+        var result = await ClassMover.MoveProjectAsync(
+            sourceProjectPath,
+            targetProjectPath,
+            "SampleFixture.Impl",
+            targetRelativePath);
+
+        Assert.True(File.Exists(result.TargetFilePath));
+        var movedContent = await File.ReadAllTextAsync(result.TargetFilePath);
+        Assert.Contains("namespace SampleFixture;", movedContent, StringComparison.Ordinal);
+        Assert.Contains("class Impl", movedContent, StringComparison.Ordinal);
+
+        var sourceContent = await File.ReadAllTextAsync(result.SourceFilePath);
+        Assert.DoesNotContain("class Impl", sourceContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task プロジェクト間移動後に再解析結果が追随する()
+    {
+        var workspaceRoot = CopyFixtureToTemp();
+        var sourceProjectPath = Path.Combine(workspaceRoot, "SampleLib", "SampleLib.csproj");
+        var targetProjectPath = Path.Combine(workspaceRoot, "TargetLib", "TargetLib.csproj");
+        var targetRelativePath = Path.Combine("Migrated", "ImplFromSample.cs");
+        var solutionPath = Path.Combine(workspaceRoot, "SampleWorkspace.sln");
+
+        var result = await ClassMover.MoveProjectAsync(
+            sourceProjectPath,
+            targetProjectPath,
+            "SampleFixture.Impl",
+            targetRelativePath);
+
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(solutionPath);
+        var movedNode = Assert.Single(graph.Nodes.Where(node => node.Id == "SampleFixture.Impl"));
+
+        Assert.NotNull(movedNode.Location);
+        Assert.Equal(result.TargetFilePath, movedNode.Location!.FilePath);
+    }
+
     private static string CopyFixtureToTemp()
     {
         var fixtureRoot = GetFixturePath();
