@@ -174,6 +174,10 @@ sequenceDiagram
   - 右ペインへHTML再描画
 - フォールバック:
   - SourceLocationが無い場合はノードのメトリクス情報を右ペインへ表示する。
+- 解析入力導線:
+  - 左ペインの `ProjectPathTextBox` + `参照` ボタンで `.sln/.csproj` を選択する。
+  - `解析実行` ボタンで `DependencyAnalyzer.AnalyzePathAsync` を起動し、中央グラフと右ペイン初期表示を更新する。
+  - `再解析` は直近の解析パスを優先し、未指定時はサンプル解析にフォールバックする。
 - ビルド方針:
   - `net8.0-windows10.0.19041.0` + `UseWPF=true`
   - 非Windows環境ビルドのため `EnableWindowsTargeting=true` を設定する。

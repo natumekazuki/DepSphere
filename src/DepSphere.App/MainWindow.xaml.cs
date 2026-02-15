@@ -1,4 +1,6 @@
 using DepSphere.Analyzer;
+using Microsoft.Win32;
+using System.IO;
 using System.Text;
 using System.Windows;
 
@@ -7,6 +9,7 @@ namespace DepSphere.App;
 public partial class MainWindow : Window
 {
     private DependencyGraph? _currentGraph;
+    private string? _currentAnalysisPath;
 
     public MainWindow()
     {
@@ -34,16 +37,56 @@ public partial class MainWindow : Window
 
     private async void OnLoadSampleClick(object sender, RoutedEventArgs e)
     {
+        _currentAnalysisPath = null;
+        ProjectPathTextBox.Text = string.Empty;
         await LoadSampleAsync();
     }
 
     private async void OnReloadClick(object sender, RoutedEventArgs e)
     {
+        if (!string.IsNullOrWhiteSpace(_currentAnalysisPath))
+        {
+            await AnalyzeProjectAsync(_currentAnalysisPath);
+            return;
+        }
+
         await LoadSampleAsync();
+    }
+
+    private void OnBrowseProjectClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "解析対象を選択",
+            Filter = "C# Solution/Project (*.sln;*.csproj)|*.sln;*.csproj|Solution (*.sln)|*.sln|C# Project (*.csproj)|*.csproj",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        ProjectPathTextBox.Text = dialog.FileName;
+    }
+
+    private async void OnAnalyzeClick(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetValidProjectPath(ProjectPathTextBox.Text, out var path, out var errorMessage))
+        {
+            StatusText.Text = errorMessage ?? "解析対象が不正です。";
+            return;
+        }
+
+        _currentAnalysisPath = path;
+        await AnalyzeProjectAsync(path);
     }
 
     private async Task LoadSampleAsync()
     {
+        StatusText.Text = "サンプル解析中...";
+
         var sourceA = """
             namespace Demo;
 
@@ -71,23 +114,75 @@ public partial class MainWindow : Window
             }
             """;
 
-        _currentGraph = DependencyAnalyzer.Analyze(new[] { sourceA, sourceB });
-        var view = GraphViewBuilder.Build(_currentGraph);
+        var graph = DependencyAnalyzer.Analyze(new[] { sourceA, sourceB });
+        RenderGraph(graph, "サンプル解析完了");
+        await Task.CompletedTask;
+    }
 
+    private async Task AnalyzeProjectAsync(string path)
+    {
+        StatusText.Text = "解析中...";
+
+        try
+        {
+            var graph = await DependencyAnalyzer.AnalyzePathAsync(path);
+            RenderGraph(graph, $"解析完了: {Path.GetFileName(path)}");
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "解析失敗: " + ex.Message;
+        }
+    }
+
+    private void RenderGraph(DependencyGraph graph, string statusPrefix)
+    {
+        _currentGraph = graph;
+        var view = GraphViewBuilder.Build(graph);
         GraphWebView.NavigateToString(GraphViewHtmlBuilder.Build(view));
+        CodeWebView.NavigateToString(BuildInitialCodeViewHtml());
+        SelectedNodeText.Text = "(未選択)";
+        StatusText.Text = $"{statusPrefix} / ノード {view.Nodes.Count} / エッジ {view.Edges.Count}";
+    }
 
+    private static string BuildInitialCodeViewHtml()
+    {
         var initial = SourceCodeViewerHtmlBuilder.Build(
             new SourceCodeDocument(
                 "(未選択)",
                 1,
                 1,
                 "ノードをクリックするとコードを表示します。"));
-        CodeWebView.NavigateToString(initial);
+        return initial;
+    }
 
-        SelectedNodeText.Text = "(未選択)";
-        StatusText.Text = $"ノード {view.Nodes.Count} / エッジ {view.Edges.Count}";
+    private static bool TryGetValidProjectPath(string? input, out string path, out string? errorMessage)
+    {
+        path = string.Empty;
+        errorMessage = null;
 
-        await Task.CompletedTask;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            errorMessage = ".sln または .csproj を入力してください。";
+            return false;
+        }
+
+        var trimmed = input.Trim();
+        if (!File.Exists(trimmed))
+        {
+            errorMessage = "指定ファイルが存在しません。";
+            return false;
+        }
+
+        var extension = Path.GetExtension(trimmed);
+        if (!extension.Equals(".sln", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = ".sln または .csproj のみ対応です。";
+            return false;
+        }
+
+        path = trimmed;
+        return true;
     }
 
     private void OnGraphMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
