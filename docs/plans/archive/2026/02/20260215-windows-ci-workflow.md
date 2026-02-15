@@ -4,11 +4,11 @@
 - GitHub Actions で Windows ジョブを実行し、`DepSphere.App` のビルドと最小起動確認を自動化する。
 
 ## Task List
-- [ ] `.github/workflows` に Windows CI workflow を追加する。
-- [ ] AnalyzerテストをWindows上で実行し、既存回帰を確認する。
-- [ ] `DepSphere.App` をWindows上でビルドする。
-- [ ] ビルド成果物の最小起動スモーク（起動して短時間で終了）を追加する。
-- [ ] Non-Windowsバックログへ進捗を反映する。
+- [x] `.github/workflows` に Windows CI workflow を追加する。
+- [x] AnalyzerテストをWindows上で実行し、既存回帰を確認する。
+- [x] `DepSphere.App` をWindows上でビルドする。
+- [x] ビルド成果物の最小起動スモーク（起動して短時間で終了）を追加する。
+- [x] Non-Windowsバックログへ進捗を反映する。
 
 ## Affected Files
 - `.github/workflows/windows-ci.yml`
@@ -24,3 +24,5 @@
 
 ## Notes / Logs
 - 2026-02-15: 初版作成。
+- 2026-02-15: `.github/workflows/windows-ci.yml` を追加（restore/build/test + WPF最小起動スモーク）。
+- 2026-02-15: ローカル（macOS）では `dotnet test DepSphere.sln` を実行し57件成功。Windows workflow 実行はCI上で確認する。
