@@ -32,6 +32,21 @@ public static class GraphViewHtmlBuilder
     #overlay .control { margin-top: 8px; }
     #overlay label { display: block; margin-bottom: 2px; color: #cbd5e1; }
     #overlay input[type='range'] { width: 100%; }
+    #clear-filter {
+      margin-top: 10px;
+      width: 100%;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(30, 41, 59, 0.85);
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #clear-filter:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
     #node-info {
       position: fixed; right: 12px; top: 12px; color: #e2e8f0;
       background: rgba(2, 6, 23, 0.82); padding: 10px 12px; border-radius: 10px;
@@ -47,7 +62,8 @@ public static class GraphViewHtmlBuilder
   <canvas id="dep-graph-canvas"></canvas>
   <div id="overlay">
     <h1>DepSphere 3D Graph</h1>
-    <div>左クリック: ノード選択</div>
+    <div>シングルクリック: 接続ノードに限定</div>
+    <div>ダブルクリック: コード表示</div>
     <div>右ドラッグ: 回転 / 左ドラッグ: 平行移動 / ホイール: ズーム</div>
     <div class="control">
       <label for="node-scale">ノード倍率</label>
@@ -57,6 +73,7 @@ public static class GraphViewHtmlBuilder
       <label for="spread-scale">距離倍率</label>
       <input id="spread-scale" type="range" min="0.6" max="2.6" step="0.1" value="1.0" />
     </div>
+    <button id="clear-filter" type="button" disabled>表示限定解除</button>
   </div>
   <div id="node-info">
     <div class="title">ノード情報</div>
@@ -70,6 +87,7 @@ public static class GraphViewHtmlBuilder
     const infoBody = document.getElementById('node-info-body');
     const nodeScaleInput = document.getElementById('node-scale');
     const spreadScaleInput = document.getElementById('spread-scale');
+    const clearFilterButton = document.getElementById('clear-filter');
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1220);
@@ -101,8 +119,10 @@ public static class GraphViewHtmlBuilder
     const nodeMeshes = [];
     const nodeMap = new Map();
     const basePositions = new Map();
+    const adjacencyMap = new Map();
     const edgeLines = [];
     let selectedNodeId = null;
+    let visibleNodeIds = null;
 
     function hexColor(color) {
       if (!color || !color.startsWith('#')) return 0x3b82f6;
@@ -179,6 +199,9 @@ public static class GraphViewHtmlBuilder
       const to = nodeMap.get(edge.to);
       if (!from || !to) return;
 
+      addAdjacent(edge.from, edge.to);
+      addAdjacent(edge.to, edge.from);
+
       const points = [from.position.clone(), to.position.clone()];
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
       const material = new THREE.LineBasicMaterial({ color: hexColor(edge.color), opacity: 0.68, transparent: true });
@@ -186,6 +209,14 @@ public static class GraphViewHtmlBuilder
       scene.add(line);
       edgeLines.push({ from: edge.from, to: edge.to, line });
     });
+
+    function addAdjacent(sourceId, targetId) {
+      if (!adjacencyMap.has(sourceId)) {
+        adjacencyMap.set(sourceId, new Set());
+      }
+
+      adjacencyMap.get(sourceId).add(targetId);
+    }
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -244,6 +275,9 @@ public static class GraphViewHtmlBuilder
         const to = nodeMap.get(item.to);
         if (!from || !to) return;
 
+        const visible = !visibleNodeIds
+          || (visibleNodeIds.has(item.from) && visibleNodeIds.has(item.to));
+        item.line.visible = visible;
         item.line.geometry.setFromPoints([from.position.clone(), to.position.clone()]);
       });
     }
@@ -255,6 +289,9 @@ public static class GraphViewHtmlBuilder
       nodeMeshes.forEach((mesh) => {
         const id = mesh.userData.nodeId;
         const basePos = basePositions.get(id);
+        const visible = !visibleNodeIds || visibleNodeIds.has(id);
+        mesh.visible = visible;
+
         if (basePos) {
           mesh.position.copy(basePos).multiplyScalar(spreadScale);
         }
@@ -273,9 +310,51 @@ public static class GraphViewHtmlBuilder
       refreshEdges();
     }
 
+    function setConnectedNodeFilter(nodeId) {
+      const visible = new Set();
+      visible.add(nodeId);
+
+      const connected = adjacencyMap.get(nodeId);
+      if (connected) {
+        connected.forEach((value) => visible.add(value));
+      }
+
+      visibleNodeIds = visible;
+      updateFilterButtonState();
+      applyVisualSettings();
+    }
+
+    function clearNodeFilter() {
+      visibleNodeIds = null;
+      updateFilterButtonState();
+      applyVisualSettings();
+    }
+
+    function updateFilterButtonState() {
+      clearFilterButton.disabled = visibleNodeIds === null;
+    }
+
+    function pickNodeFromEvent(event) {
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+
+      const hits = raycaster.intersectObjects(nodeMeshes, false);
+      if (hits.length === 0) {
+        return null;
+      }
+
+      return hits[0].object;
+    }
+
     window.depSphereFocusNode = function(nodeId) {
       const target = nodeMap.get(nodeId);
       if (!target) return;
+
+      if (visibleNodeIds && !visibleNodeIds.has(nodeId)) {
+        clearNodeFilter();
+      }
 
       selectedNodeId = nodeId;
       applyVisualSettings();
@@ -289,17 +368,27 @@ public static class GraphViewHtmlBuilder
         return;
       }
 
-      const rect = canvas.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(pointer, camera);
-
-      const hits = raycaster.intersectObjects(nodeMeshes, false);
-      if (hits.length === 0) {
+      const selected = pickNodeFromEvent(event);
+      if (!selected) {
         return;
       }
 
-      const selected = hits[0].object;
+      const selectedId = selected.userData.nodeId;
+      selectedNodeId = selectedId;
+      setConnectedNodeFilter(selectedId);
+      updateNodeInfo(selected.userData.node);
+    });
+
+    canvas.addEventListener('dblclick', (event) => {
+      if (pointerMoved) {
+        return;
+      }
+
+      const selected = pickNodeFromEvent(event);
+      if (!selected) {
+        return;
+      }
+
       const selectedId = selected.userData.nodeId;
       selectedNodeId = selectedId;
       applyVisualSettings();
@@ -309,6 +398,7 @@ public static class GraphViewHtmlBuilder
 
     nodeScaleInput.addEventListener('input', applyVisualSettings);
     spreadScaleInput.addEventListener('input', applyVisualSettings);
+    clearFilterButton.addEventListener('click', clearNodeFilter);
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -316,6 +406,7 @@ public static class GraphViewHtmlBuilder
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    updateFilterButtonState();
     applyVisualSettings();
 
     function createCameraController(camera, surface) {

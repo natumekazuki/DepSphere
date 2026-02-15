@@ -48,8 +48,23 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("surface.addEventListener('wheel', handleWheel", html);
         Assert.Contains("node-scale", html);
         Assert.Contains("spread-scale", html);
+        Assert.Contains("clear-filter", html);
+        Assert.Contains("表示限定解除", html);
         Assert.DoesNotContain("OrbitControls.js", html);
         Assert.DoesNotContain("scene.rotation.y +=", html);
+    }
+
+    [Fact]
+    public void シングルクリックは接続ノード絞り込みダブルクリックはコード表示を行う()
+    {
+        var view = BuildSampleView();
+
+        var html = GraphViewHtmlBuilder.Build(view);
+
+        Assert.Contains("setConnectedNodeFilter", html);
+        Assert.Contains("canvas.addEventListener('click'", html);
+        Assert.Contains("canvas.addEventListener('dblclick'", html);
+        Assert.Contains("postNodeSelected(selectedId)", html);
     }
 
     [Fact]
