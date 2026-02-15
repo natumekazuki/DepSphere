@@ -59,6 +59,19 @@ public class GraphViewHtmlBuilderTests
     }
 
     [Fact]
+    public void 文字列化されたWebViewメッセージも解析できる()
+    {
+        var raw = "\"{\\\"type\\\":\\\"nodeSelected\\\",\\\"nodeId\\\":\\\"Sample.Impl\\\"}\"";
+
+        var ok = GraphHostMessageParser.TryParse(raw, out var message);
+
+        Assert.True(ok);
+        Assert.NotNull(message);
+        Assert.Equal("nodeSelected", message!.Type);
+        Assert.Equal("Sample.Impl", message.NodeId);
+    }
+
+    [Fact]
     public void フォーカスコマンドスクリプトを生成できる()
     {
         var script = GraphViewScriptCommandBuilder.BuildFocusNodeScript("Sample.Impl");

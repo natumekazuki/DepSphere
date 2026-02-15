@@ -15,29 +15,53 @@ public static class GraphHostMessageParser
         try
         {
             using var doc = JsonDocument.Parse(rawMessage);
-            if (!doc.RootElement.TryGetProperty("type", out var typeElement))
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.String)
             {
-                return false;
+                var nestedJson = root.GetString();
+                if (string.IsNullOrWhiteSpace(nestedJson))
+                {
+                    return false;
+                }
+
+                using var nested = JsonDocument.Parse(nestedJson);
+                return TryParseObject(nested.RootElement, out message);
             }
 
-            var type = typeElement.GetString();
-            if (string.IsNullOrWhiteSpace(type))
-            {
-                return false;
-            }
-
-            string? nodeId = null;
-            if (doc.RootElement.TryGetProperty("nodeId", out var nodeIdElement))
-            {
-                nodeId = nodeIdElement.GetString();
-            }
-
-            message = new GraphHostMessage(type, nodeId);
-            return true;
+            return TryParseObject(root, out message);
         }
         catch (JsonException)
         {
             return false;
         }
+    }
+
+    private static bool TryParseObject(JsonElement root, out GraphHostMessage? message)
+    {
+        message = null;
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!root.TryGetProperty("type", out var typeElement))
+        {
+            return false;
+        }
+
+        var type = typeElement.GetString();
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return false;
+        }
+
+        string? nodeId = null;
+        if (root.TryGetProperty("nodeId", out var nodeIdElement))
+        {
+            nodeId = nodeIdElement.GetString();
+        }
+
+        message = new GraphHostMessage(type, nodeId);
+        return true;
     }
 }

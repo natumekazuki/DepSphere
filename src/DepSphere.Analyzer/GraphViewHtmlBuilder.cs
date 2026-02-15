@@ -90,7 +90,7 @@ public static class GraphViewHtmlBuilder
     const pointer = new THREE.Vector2();
 
     function postNodeSelected(nodeId) {
-      const payload = JSON.stringify({ type: 'nodeSelected', nodeId: nodeId });
+      const payload = { type: 'nodeSelected', nodeId: nodeId };
       if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
         window.chrome.webview.postMessage(payload);
       }
