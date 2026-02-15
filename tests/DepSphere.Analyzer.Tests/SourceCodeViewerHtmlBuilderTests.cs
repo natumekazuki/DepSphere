@@ -18,10 +18,18 @@ public class SourceCodeViewerHtmlBuilderTests
         var html = SourceCodeViewerHtmlBuilder.Build(doc);
 
         Assert.Contains("dep-source-viewer", html);
+        Assert.Contains("dep-source-viewer-fallback", html);
         Assert.Contains("readonly", html);
-        Assert.Contains("public class Sample", html);
+        Assert.Contains("monaco-editor", html);
+        Assert.Contains("initializeMonaco", html);
         Assert.Contains("depSymbolLinks", html);
         Assert.Contains("dblclick", html);
+
+        var sourceMatch = Regex.Match(html, "const depSourceBase64 = \"(?<base64>[A-Za-z0-9+/=]+)\";");
+        Assert.True(sourceMatch.Success);
+
+        var sourceDecoded = Encoding.UTF8.GetString(Convert.FromBase64String(sourceMatch.Groups["base64"].Value));
+        Assert.Contains("public class Sample", sourceDecoded);
     }
 
     [Fact]
