@@ -78,6 +78,94 @@ public class RealtimeUpdateTests
     }
 
     [Fact]
+    public async Task 内容差分がないcs変更イベントでも無関係ノードには波及しない()
+    {
+        var workspaceRoot = CopyFixtureToTemp();
+        var projectPath = Path.Combine(workspaceRoot, "SampleLib", "SampleLib.csproj");
+        var sourceFile = Path.Combine(workspaceRoot, "SampleLib", "FixtureTypes.cs");
+        var stableFile = Path.Combine(workspaceRoot, "SampleLib", "Stable.cs");
+
+        await File.WriteAllTextAsync(
+            stableFile,
+            "namespace SampleFixture; public class Stable {}",
+            CancellationToken.None);
+
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(projectPath);
+
+        var updater = new RealtimeGraphUpdater();
+        var result = await updater.UpdateAsync(
+            projectPath,
+            graph,
+            new[] { new GraphChangeEvent(GraphChangeEventType.DocumentChanged, sourceFile) });
+
+        Assert.Empty(result.Patch.RemoveNodeIds);
+        Assert.DoesNotContain(result.Patch.UpsertNodes, node => node.Id == "SampleFixture.Stable");
+        Assert.DoesNotContain(result.Patch.UpsertEdges, edge => edge.From == "SampleFixture.Stable" || edge.To == "SampleFixture.Stable");
+        Assert.DoesNotContain(result.Patch.RemoveEdges, edge => edge.From == "SampleFixture.Stable" || edge.To == "SampleFixture.Stable");
+        Assert.Contains(result.UpdatedGraph.Nodes, node => node.Id == "SampleFixture.Stable");
+    }
+
+    [Fact]
+    public async Task 削除イベントで対象ノードのみを除去できる()
+    {
+        var workspaceRoot = CopyFixtureToTemp();
+        var projectPath = Path.Combine(workspaceRoot, "SampleLib", "SampleLib.csproj");
+        var transientFile = Path.Combine(workspaceRoot, "SampleLib", "Transient.cs");
+
+        await File.WriteAllTextAsync(
+            transientFile,
+            "namespace SampleFixture; public class Transient {}",
+            CancellationToken.None);
+
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(projectPath);
+        Assert.Contains(graph.Nodes, node => node.Id == "SampleFixture.Transient");
+
+        File.Delete(transientFile);
+
+        var updater = new RealtimeGraphUpdater();
+        var result = await updater.UpdateAsync(
+            projectPath,
+            graph,
+            new[] { new GraphChangeEvent(GraphChangeEventType.DocumentRemoved, transientFile) });
+
+        Assert.Contains(result.Patch.RemoveNodeIds, id => id == "SampleFixture.Transient");
+        Assert.DoesNotContain(result.Patch.RemoveNodeIds, id => id != "SampleFixture.Transient");
+        Assert.DoesNotContain(result.UpdatedGraph.Nodes, node => node.Id == "SampleFixture.Transient");
+    }
+
+    [Fact]
+    public async Task 単一ファイル変更で無関係ノードを削除しない()
+    {
+        var workspaceRoot = CopyFixtureToTemp();
+        var projectPath = Path.Combine(workspaceRoot, "SampleLib", "SampleLib.csproj");
+        var targetFile = Path.Combine(workspaceRoot, "SampleLib", "Transient.cs");
+
+        await File.WriteAllTextAsync(
+            targetFile,
+            "namespace SampleFixture; public class Transient {}",
+            CancellationToken.None);
+
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(projectPath);
+        Assert.Contains(graph.Nodes, node => node.Id == "SampleFixture.Transient");
+
+        await File.WriteAllTextAsync(
+            targetFile,
+            "namespace SampleFixture; public class TransientRenamed {}",
+            CancellationToken.None);
+
+        var updater = new RealtimeGraphUpdater();
+        var result = await updater.UpdateAsync(
+            projectPath,
+            graph,
+            new[] { new GraphChangeEvent(GraphChangeEventType.DocumentChanged, targetFile) });
+
+        Assert.Contains(result.Patch.RemoveNodeIds, id => id == "SampleFixture.Transient");
+        Assert.Contains(result.Patch.UpsertNodes, node => node.Id == "SampleFixture.TransientRenamed");
+        Assert.DoesNotContain(result.Patch.RemoveNodeIds, id => id == "SampleFixture.Impl");
+        Assert.Contains(result.UpdatedGraph.Nodes, node => node.Id == "SampleFixture.Impl");
+    }
+
+    [Fact]
     public async Task cs変更のみなら無効な解析パスでも増分更新できる()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), "depsphere-inc-" + Guid.NewGuid().ToString("N") + ".cs");
