@@ -15,6 +15,11 @@ public static class DependencyAnalyzer
 
     public static DependencyGraph Analyze(IEnumerable<string> sourceCodes)
     {
+        return Analyze(sourceCodes, options: null);
+    }
+
+    public static DependencyGraph Analyze(IEnumerable<string> sourceCodes, AnalysisOptions? options)
+    {
         var syntaxTrees = sourceCodes
             .Select(code => CSharpSyntaxTree.ParseText(code))
             .ToList();
@@ -25,7 +30,10 @@ public static class DependencyAnalyzer
             references: BuildMetadataReferences(),
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        return AnalyzeCompilations(new[] { compilation });
+        var effectiveOptions = options ?? new AnalysisOptions();
+        var normalizedWeights = effectiveOptions.GetNormalizedMetricWeights();
+        _ = effectiveOptions.ValidateLevelThresholds();
+        return AnalyzeCompilations(new[] { compilation }, normalizedWeights: normalizedWeights);
     }
 
     public static Task<DependencyGraph> AnalyzePathAsync(string path, CancellationToken cancellationToken = default)
@@ -59,6 +67,8 @@ public static class DependencyAnalyzer
 
         var effectiveOptions = options ?? new AnalysisOptions();
         var metricsProgressReportInterval = effectiveOptions.ValidateMetricsProgressReportInterval();
+        var normalizedWeights = effectiveOptions.GetNormalizedMetricWeights();
+        _ = effectiveOptions.ValidateLevelThresholds();
 
         ReportProgress(progress, "prepare", "入力検証完了");
         EnsureMsBuildRegistered();
@@ -77,7 +87,7 @@ public static class DependencyAnalyzer
                 var solution = await workspace.OpenSolutionAsync(path, cancellationToken: cancellationToken);
                 var projects = solution.Projects.ToArray();
                 ReportProgress(progress, "load", "ソリューション読込完了", projects.Length, projects.Length);
-                var graph = await AnalyzeProjectsAsync(projects, metricsProgressReportInterval, progress, cancellationToken);
+                var graph = await AnalyzeProjectsAsync(projects, metricsProgressReportInterval, normalizedWeights, progress, cancellationToken);
                 ReportProgress(progress, "complete", "解析完了");
                 return graph;
             }
@@ -87,7 +97,7 @@ public static class DependencyAnalyzer
                 ReportProgress(progress, "load", "プロジェクトを読み込み中");
                 var project = await workspace.OpenProjectAsync(path, cancellationToken: cancellationToken);
                 ReportProgress(progress, "load", "プロジェクト読込完了", 1, 1);
-                var graph = await AnalyzeProjectsAsync(new[] { project }, metricsProgressReportInterval, progress, cancellationToken);
+                var graph = await AnalyzeProjectsAsync(new[] { project }, metricsProgressReportInterval, normalizedWeights, progress, cancellationToken);
                 ReportProgress(progress, "complete", "解析完了");
                 return graph;
             }
@@ -103,6 +113,7 @@ public static class DependencyAnalyzer
     private static async Task<DependencyGraph> AnalyzeProjectsAsync(
         IEnumerable<Project> projects,
         int metricsProgressReportInterval,
+        (double Method, double Statement, double Branch, double CallSite, double FanOut, double InDegree) normalizedWeights,
         IProgress<AnalysisProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -123,15 +134,21 @@ public static class DependencyAnalyzer
         }
 
         ReportProgress(progress, "compile", "コンパイル作成完了", compilations.Count, total);
-        return AnalyzeCompilations(compilations, metricsProgressReportInterval, progress, cancellationToken);
+        return AnalyzeCompilations(compilations, metricsProgressReportInterval, normalizedWeights, progress, cancellationToken);
     }
 
     private static DependencyGraph AnalyzeCompilations(
         IEnumerable<Compilation> compilations,
         int metricsProgressReportInterval = AnalysisOptions.DefaultMetricsProgressReportInterval,
+        (double Method, double Statement, double Branch, double CallSite, double FanOut, double InDegree) normalizedWeights = default,
         IProgress<AnalysisProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        if (normalizedWeights == default)
+        {
+            normalizedWeights = new AnalysisOptions().GetNormalizedMetricWeights();
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         ReportProgress(progress, "metrics", "型定義を収集中");
         var declaredTypes = CollectDeclaredTypes(compilations);
@@ -165,7 +182,7 @@ public static class DependencyAnalyzer
             pair.Value.InDegree = inDegreeMap.TryGetValue(pair.Key, out var degree) ? degree : 0;
         }
 
-        var nodes = BuildNodes(rawMetrics);
+        var nodes = BuildNodes(rawMetrics, normalizedWeights);
         var orderedEdges = edges
             .OrderBy(edge => edge.From, StringComparer.Ordinal)
             .ThenBy(edge => edge.To, StringComparer.Ordinal)
@@ -176,7 +193,9 @@ public static class DependencyAnalyzer
         return new DependencyGraph(nodes, orderedEdges);
     }
 
-    private static IReadOnlyList<DependencyNode> BuildNodes(IReadOnlyDictionary<string, RawMetrics> rawMetrics)
+    private static IReadOnlyList<DependencyNode> BuildNodes(
+        IReadOnlyDictionary<string, RawMetrics> rawMetrics,
+        (double Method, double Statement, double Branch, double CallSite, double FanOut, double InDegree) normalizedWeights)
     {
         var methodN = Normalize(rawMetrics.ToDictionary(pair => pair.Key, pair => pair.Value.MethodCount, StringComparer.Ordinal));
         var statementN = Normalize(rawMetrics.ToDictionary(pair => pair.Key, pair => pair.Value.StatementCount, StringComparer.Ordinal));
@@ -192,12 +211,12 @@ public static class DependencyAnalyzer
             var raw = pair.Value;
 
             var score =
-                0.15 * methodN[id] +
-                0.30 * statementN[id] +
-                0.20 * branchN[id] +
-                0.20 * callSiteN[id] +
-                0.10 * fanOutN[id] +
-                0.05 * inDegreeN[id];
+                normalizedWeights.Method * methodN[id] +
+                normalizedWeights.Statement * statementN[id] +
+                normalizedWeights.Branch * branchN[id] +
+                normalizedWeights.CallSite * callSiteN[id] +
+                normalizedWeights.FanOut * fanOutN[id] +
+                normalizedWeights.InDegree * inDegreeN[id];
 
             nodes.Add(
                 new DependencyNode(

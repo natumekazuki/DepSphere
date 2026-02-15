@@ -165,7 +165,7 @@ public partial class MainWindow : Window
             """;
 
         var graph = DependencyAnalyzer.Analyze(new[] { sourceA, sourceB });
-        RenderGraph(graph, "サンプル解析完了");
+        RenderGraph(graph, "サンプル解析完了", options: null);
         await Task.CompletedTask;
     }
 
@@ -195,7 +195,7 @@ public partial class MainWindow : Window
                 MetricsProgressReportInterval = progressInterval
             };
             var graph = await DependencyAnalyzer.AnalyzePathAsync(path, options, progress, cts.Token);
-            RenderGraph(graph, $"解析完了: {Path.GetFileName(path)}");
+            RenderGraph(graph, $"解析完了: {Path.GetFileName(path)}", options);
         }
         catch (OperationCanceledException)
         {
@@ -216,10 +216,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RenderGraph(DependencyGraph graph, string statusPrefix)
+    private void RenderGraph(DependencyGraph graph, string statusPrefix, AnalysisOptions? options)
     {
         _currentGraph = graph;
-        var view = GraphViewBuilder.Build(graph);
+        var view = GraphViewBuilder.Build(graph, options);
         GraphWebView.NavigateToString(GraphViewHtmlBuilder.Build(view));
         CodeWebView.NavigateToString(BuildInitialCodeViewHtml());
         SelectedNodeText.Text = "(未選択)";

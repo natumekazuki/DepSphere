@@ -4,11 +4,19 @@ public static class GraphViewBuilder
 {
     public static GraphView Build(DependencyGraph graph)
     {
+        return Build(graph, options: null);
+    }
+
+    public static GraphView Build(DependencyGraph graph, AnalysisOptions? options)
+    {
+        var effectiveOptions = options ?? new AnalysisOptions();
+        var thresholds = effectiveOptions.ValidateLevelThresholds();
+
         var orderedNodes = graph.Nodes
             .OrderBy(node => node.Id, StringComparer.Ordinal)
             .ToArray();
 
-        var levelMap = BuildLevelMap(orderedNodes);
+        var levelMap = BuildLevelMap(orderedNodes, thresholds.HotspotTopPercent, thresholds.CriticalTopPercent);
         var avgInDegree = orderedNodes.Length == 0
             ? 0
             : orderedNodes.Average(node => node.Metrics.InDegree);
@@ -54,7 +62,10 @@ public static class GraphViewBuilder
         return new GraphView(nodes, edges);
     }
 
-    private static Dictionary<string, string> BuildLevelMap(IReadOnlyList<DependencyNode> nodes)
+    private static Dictionary<string, string> BuildLevelMap(
+        IReadOnlyList<DependencyNode> nodes,
+        double hotspotTopPercent,
+        double criticalTopPercent)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         if (nodes.Count == 0)
@@ -67,8 +78,8 @@ public static class GraphViewBuilder
             .ThenBy(node => node.Id, StringComparer.Ordinal)
             .ToArray();
 
-        var criticalCount = Math.Max(1, (int)Math.Ceiling(ranked.Length * 0.03));
-        var hotspotCount = Math.Max(1, (int)Math.Ceiling(ranked.Length * 0.10));
+        var criticalCount = Math.Max(1, (int)Math.Ceiling(ranked.Length * criticalTopPercent));
+        var hotspotCount = Math.Max(1, (int)Math.Ceiling(ranked.Length * hotspotTopPercent));
         hotspotCount = Math.Max(hotspotCount, criticalCount);
 
         for (var i = 0; i < ranked.Length; i++)

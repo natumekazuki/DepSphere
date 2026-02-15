@@ -1,4 +1,5 @@
 using DepSphere.Analyzer;
+using System.Globalization;
 using System.Text;
 
 var exitCode = await CliProgram.RunAsync(args);
@@ -29,6 +30,8 @@ internal static class CliProgram
             Console.WriteLine($"入力: {options.InputPath}");
             Console.WriteLine($"出力先: {outputDirectory}");
             Console.WriteLine($"進捗更新間隔: {options.ProgressInterval}");
+            Console.WriteLine($"重み係数: method={options.WeightMethod}, statement={options.WeightStatement}, branch={options.WeightBranch}, callsite={options.WeightCallSite}, fanout={options.WeightFanOut}, indegree={options.WeightInDegree}");
+            Console.WriteLine($"閾値: hotspot={options.HotspotTopPercent}, critical={options.CriticalTopPercent}");
 
             var progress = new Progress<AnalysisProgress>(item =>
             {
@@ -36,7 +39,15 @@ internal static class CliProgram
             });
             var analyzerOptions = new AnalysisOptions
             {
-                MetricsProgressReportInterval = options.ProgressInterval
+                MetricsProgressReportInterval = options.ProgressInterval,
+                WeightMethod = options.WeightMethod,
+                WeightStatement = options.WeightStatement,
+                WeightBranch = options.WeightBranch,
+                WeightCallSite = options.WeightCallSite,
+                WeightFanOut = options.WeightFanOut,
+                WeightInDegree = options.WeightInDegree,
+                HotspotTopPercent = options.HotspotTopPercent,
+                CriticalTopPercent = options.CriticalTopPercent
             };
 
             var graph = await DependencyAnalyzer.AnalyzePathAsync(
@@ -44,7 +55,7 @@ internal static class CliProgram
                 analyzerOptions,
                 progress,
                 CancellationToken.None);
-            var view = GraphViewBuilder.Build(graph);
+            var view = GraphViewBuilder.Build(graph, analyzerOptions);
 
             var jsonPath = ResolveOutputPath(outputDirectory, options.JsonOutputPath);
             var htmlPath = ResolveOutputPath(outputDirectory, options.HtmlOutputPath);
@@ -112,6 +123,14 @@ internal static class CliProgram
               --json <path>                JSON出力パス（既定: graph.json）
               --html <path>                HTML出力パス（既定: graph.html）
               --progress-interval <int>    進捗更新間隔（型件数、既定: 25）
+              --weight-method <double>     MethodCount重み（既定: 0.15）
+              --weight-statement <double>  StatementCount重み（既定: 0.30）
+              --weight-branch <double>     BranchCount重み（既定: 0.20）
+              --weight-callsite <double>   CallSiteCount重み（既定: 0.20）
+              --weight-fanout <double>     FanOut重み（既定: 0.10）
+              --weight-indegree <double>   InDegree重み（既定: 0.05）
+              --hotspot-top <double>       Hotspot上位割合（既定: 0.10）
+              --critical-top <double>      Critical上位割合（既定: 0.03）
               -h, --help                   ヘルプ表示
 
             例:
@@ -126,6 +145,14 @@ internal sealed record CliOptions(
     string JsonOutputPath,
     string HtmlOutputPath,
     int ProgressInterval,
+    double WeightMethod,
+    double WeightStatement,
+    double WeightBranch,
+    double WeightCallSite,
+    double WeightFanOut,
+    double WeightInDegree,
+    double HotspotTopPercent,
+    double CriticalTopPercent,
     bool ShowHelp)
 {
     private const string DefaultOutputDirectory = "artifacts/depsphere";
@@ -139,6 +166,14 @@ internal sealed record CliOptions(
         var jsonOutputPath = DefaultJsonOutputPath;
         var htmlOutputPath = DefaultHtmlOutputPath;
         var progressInterval = AnalysisOptions.DefaultMetricsProgressReportInterval;
+        var weightMethod = AnalysisOptions.DefaultWeightMethod;
+        var weightStatement = AnalysisOptions.DefaultWeightStatement;
+        var weightBranch = AnalysisOptions.DefaultWeightBranch;
+        var weightCallSite = AnalysisOptions.DefaultWeightCallSite;
+        var weightFanOut = AnalysisOptions.DefaultWeightFanOut;
+        var weightInDegree = AnalysisOptions.DefaultWeightInDegree;
+        var hotspotTopPercent = AnalysisOptions.DefaultHotspotTopPercent;
+        var criticalTopPercent = AnalysisOptions.DefaultCriticalTopPercent;
         var showHelp = false;
 
         for (var i = 0; i < args.Length; i++)
@@ -202,6 +237,70 @@ internal sealed record CliOptions(
                     }
 
                     continue;
+                case "--weight-method":
+                    if (!TryReadDouble(args, ref i, out weightMethod, out errorMessage, "--weight-method"))
+                    {
+                        options = Default();
+                        return false;
+                    }
+
+                    continue;
+                case "--weight-statement":
+                    if (!TryReadDouble(args, ref i, out weightStatement, out errorMessage, "--weight-statement"))
+                    {
+                        options = Default();
+                        return false;
+                    }
+
+                    continue;
+                case "--weight-branch":
+                    if (!TryReadDouble(args, ref i, out weightBranch, out errorMessage, "--weight-branch"))
+                    {
+                        options = Default();
+                        return false;
+                    }
+
+                    continue;
+                case "--weight-callsite":
+                    if (!TryReadDouble(args, ref i, out weightCallSite, out errorMessage, "--weight-callsite"))
+                    {
+                        options = Default();
+                        return false;
+                    }
+
+                    continue;
+                case "--weight-fanout":
+                    if (!TryReadDouble(args, ref i, out weightFanOut, out errorMessage, "--weight-fanout"))
+                    {
+                        options = Default();
+                        return false;
+                    }
+
+                    continue;
+                case "--weight-indegree":
+                    if (!TryReadDouble(args, ref i, out weightInDegree, out errorMessage, "--weight-indegree"))
+                    {
+                        options = Default();
+                        return false;
+                    }
+
+                    continue;
+                case "--hotspot-top":
+                    if (!TryReadDouble(args, ref i, out hotspotTopPercent, out errorMessage, "--hotspot-top"))
+                    {
+                        options = Default();
+                        return false;
+                    }
+
+                    continue;
+                case "--critical-top":
+                    if (!TryReadDouble(args, ref i, out criticalTopPercent, out errorMessage, "--critical-top"))
+                    {
+                        options = Default();
+                        return false;
+                    }
+
+                    continue;
             }
 
             if (arg.StartsWith("-", StringComparison.Ordinal))
@@ -229,12 +328,46 @@ internal sealed record CliOptions(
             return false;
         }
 
+        var validationOptions = new AnalysisOptions
+        {
+            MetricsProgressReportInterval = progressInterval,
+            WeightMethod = weightMethod,
+            WeightStatement = weightStatement,
+            WeightBranch = weightBranch,
+            WeightCallSite = weightCallSite,
+            WeightFanOut = weightFanOut,
+            WeightInDegree = weightInDegree,
+            HotspotTopPercent = hotspotTopPercent,
+            CriticalTopPercent = criticalTopPercent
+        };
+
+        try
+        {
+            _ = validationOptions.ValidateMetricsProgressReportInterval();
+            _ = validationOptions.GetNormalizedMetricWeights();
+            _ = validationOptions.ValidateLevelThresholds();
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            options = Default();
+            errorMessage = ex.Message;
+            return false;
+        }
+
         options = new CliOptions(
             inputPath,
             outputDirectory,
             jsonOutputPath,
             htmlOutputPath,
             progressInterval,
+            weightMethod,
+            weightStatement,
+            weightBranch,
+            weightCallSite,
+            weightFanOut,
+            weightInDegree,
+            hotspotTopPercent,
+            criticalTopPercent,
             showHelp);
         errorMessage = null;
         return true;
@@ -262,6 +395,39 @@ internal sealed record CliOptions(
             JsonOutputPath: DefaultJsonOutputPath,
             HtmlOutputPath: DefaultHtmlOutputPath,
             ProgressInterval: AnalysisOptions.DefaultMetricsProgressReportInterval,
+            WeightMethod: AnalysisOptions.DefaultWeightMethod,
+            WeightStatement: AnalysisOptions.DefaultWeightStatement,
+            WeightBranch: AnalysisOptions.DefaultWeightBranch,
+            WeightCallSite: AnalysisOptions.DefaultWeightCallSite,
+            WeightFanOut: AnalysisOptions.DefaultWeightFanOut,
+            WeightInDegree: AnalysisOptions.DefaultWeightInDegree,
+            HotspotTopPercent: AnalysisOptions.DefaultHotspotTopPercent,
+            CriticalTopPercent: AnalysisOptions.DefaultCriticalTopPercent,
             ShowHelp: false);
+    }
+
+    private static bool TryReadDouble(
+        string[] args,
+        ref int index,
+        out double value,
+        out string? errorMessage,
+        string optionName)
+    {
+        value = 0;
+        errorMessage = null;
+
+        if (!TryReadNext(args, ref index, out var text))
+        {
+            errorMessage = $"{optionName} の値が不足しています。";
+            return false;
+        }
+
+        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+        {
+            errorMessage = $"{optionName} は実数で指定してください。";
+            return false;
+        }
+
+        return true;
     }
 }

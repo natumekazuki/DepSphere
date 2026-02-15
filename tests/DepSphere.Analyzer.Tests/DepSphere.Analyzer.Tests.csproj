@@ -24,4 +24,9 @@
     <ProjectReference Include="..\..\src\DepSphere.Analyzer\DepSphere.Analyzer.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="Fixtures/**/obj/**/*.cs" />
+    <Compile Remove="Fixtures/**/bin/**/*.cs" />
+  </ItemGroup>
+
 </Project>

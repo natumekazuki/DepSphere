@@ -103,10 +103,13 @@ WeightScore =
   0.10*FanOutN +
   0.05*InDegreeN
 ```
+- 係数は `AnalysisOptions` で変更可能（未指定時は上記既定値）。
+- 実行時は係数合計が1になるよう正規化して適用する。
 
 ### 6.4 判定
 - 上位10%: `Hotspot`
 - 上位3%: `Critical`
+- 判定閾値（`HotspotTopPercent` / `CriticalTopPercent`）は `AnalysisOptions` で変更可能。
 
 ## 7. 3D表示仕様
 - ノード:
@@ -194,6 +197,8 @@ sequenceDiagram
   - `--json`: JSON出力パス（既定: `graph.json`）
   - `--html`: HTML出力パス（既定: `graph.html`）
   - `--progress-interval`: 進捗更新間隔（型件数）
+  - `--weight-method/--weight-statement/--weight-branch/--weight-callsite/--weight-fanout/--weight-indegree`: 重み係数
+  - `--hotspot-top/--critical-top`: Hotspot/Critical判定閾値
 - 出力:
   - `GraphViewJsonSerializer` による `graph.json`
   - `GraphViewHtmlBuilder` による `graph.html`

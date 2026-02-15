@@ -61,4 +61,43 @@ public class GraphViewBuilderTests
         Assert.True(nodes.GetArrayLength() > 0);
         Assert.True(edges.GetArrayLength() > 0);
     }
+
+    [Fact]
+    public void Hotspot閾値を変更するとレベル判定件数が変わる()
+    {
+        var nodes = Enumerable.Range(1, 10)
+            .Select(index =>
+                new DependencyNode(
+                    $"Node{index}",
+                    new TypeMetrics(0, 0, 0, 0, 0, 0, 100 - index)))
+            .ToArray();
+        var graph = new DependencyGraph(nodes, Array.Empty<DependencyEdge>());
+        var options = new AnalysisOptions
+        {
+            HotspotTopPercent = 0.40,
+            CriticalTopPercent = 0.20
+        };
+
+        var view = GraphViewBuilder.Build(graph, options);
+
+        Assert.Equal(2, view.Nodes.Count(node => node.Level == "critical"));
+        Assert.Equal(2, view.Nodes.Count(node => node.Level == "hotspot"));
+        Assert.Equal(6, view.Nodes.Count(node => node.Level == "normal"));
+    }
+
+    [Fact]
+    public void Critical閾値がHotspot閾値より大きい場合は例外になる()
+    {
+        var graph = DependencyAnalyzer.Analyze(new[] { Source });
+        var options = new AnalysisOptions
+        {
+            HotspotTopPercent = 0.10,
+            CriticalTopPercent = 0.20
+        };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            _ = GraphViewBuilder.Build(graph, options);
+        });
+    }
 }

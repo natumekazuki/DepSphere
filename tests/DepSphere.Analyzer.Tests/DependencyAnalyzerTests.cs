@@ -30,6 +30,33 @@ public class DependencyAnalyzerTests
         }
         """;
 
+    private const string WeightTuningSource = """
+        namespace WeightTune;
+
+        public class StatementHeavy
+        {
+            public void Run()
+            {
+                var total = 0;
+                total += 1;
+                total += 2;
+                total += 3;
+                total += 4;
+                total += 5;
+            }
+        }
+
+        public class FanoutHeavy
+        {
+            private readonly StatementHeavy _field = new();
+
+            public StatementHeavy Build(StatementHeavy arg)
+            {
+                return new StatementHeavy();
+            }
+        }
+        """;
+
     [Fact]
     public void 継承依存を抽出できる()
     {
@@ -126,6 +153,65 @@ public class DependencyAnalyzerTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
         {
             _ = await DependencyAnalyzer.AnalyzePathAsync(csprojPath, options, progress: null, cancellationToken: CancellationToken.None);
+        });
+    }
+
+    [Fact]
+    public void 重み係数を変更するとスコア傾向が変わる()
+    {
+        var defaultGraph = DependencyAnalyzer.Analyze(new[] { WeightTuningSource });
+        var fanoutFocused = new AnalysisOptions
+        {
+            WeightMethod = 0,
+            WeightStatement = 0,
+            WeightBranch = 0,
+            WeightCallSite = 0,
+            WeightFanOut = 1,
+            WeightInDegree = 0
+        };
+        var tunedGraph = DependencyAnalyzer.Analyze(new[] { WeightTuningSource }, fanoutFocused);
+
+        var defaultStatement = defaultGraph.Nodes.Single(node => node.Id == "WeightTune.StatementHeavy").Metrics.WeightScore;
+        var defaultFanout = defaultGraph.Nodes.Single(node => node.Id == "WeightTune.FanoutHeavy").Metrics.WeightScore;
+        var tunedStatement = tunedGraph.Nodes.Single(node => node.Id == "WeightTune.StatementHeavy").Metrics.WeightScore;
+        var tunedFanout = tunedGraph.Nodes.Single(node => node.Id == "WeightTune.FanoutHeavy").Metrics.WeightScore;
+
+        Assert.True(tunedFanout > tunedStatement);
+        Assert.True(tunedStatement < defaultStatement);
+        Assert.NotEqual(defaultFanout, tunedFanout);
+    }
+
+    [Fact]
+    public void 重み係数がすべてゼロなら例外になる()
+    {
+        var options = new AnalysisOptions
+        {
+            WeightMethod = 0,
+            WeightStatement = 0,
+            WeightBranch = 0,
+            WeightCallSite = 0,
+            WeightFanOut = 0,
+            WeightInDegree = 0
+        };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            _ = DependencyAnalyzer.Analyze(new[] { Source }, options);
+        });
+    }
+
+    [Fact]
+    public void 閾値設定が不正なら例外になる()
+    {
+        var options = new AnalysisOptions
+        {
+            HotspotTopPercent = 0.10,
+            CriticalTopPercent = 0.20
+        };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            _ = DependencyAnalyzer.Analyze(new[] { Source }, options);
         });
     }
 
