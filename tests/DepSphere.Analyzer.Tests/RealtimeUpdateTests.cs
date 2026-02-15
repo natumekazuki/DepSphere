@@ -77,6 +77,34 @@ public class RealtimeUpdateTests
         Assert.Contains(result.UpdatedGraph.Nodes, node => node.Id == "SampleFixture.NewAdded");
     }
 
+    [Fact]
+    public async Task cs変更のみなら無効な解析パスでも増分更新できる()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), "depsphere-inc-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(tempFile, "namespace Inc; public class AddedType {}", CancellationToken.None);
+
+        var updater = new RealtimeGraphUpdater();
+        var result = await updater.UpdateAsync(
+            "/path/does-not-exist.csproj",
+            new DependencyGraph(Array.Empty<DependencyNode>(), Array.Empty<DependencyEdge>()),
+            new[] { new GraphChangeEvent(GraphChangeEventType.DocumentAdded, tempFile) });
+
+        Assert.Contains(result.UpdatedGraph.Nodes, node => node.Id == "Inc.AddedType");
+        Assert.Contains(result.Patch.UpsertNodes, node => node.Id == "Inc.AddedType");
+    }
+
+    [Fact]
+    public async Task csproj変更イベントは全量再解析へフォールバックする()
+    {
+        var updater = new RealtimeGraphUpdater();
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            updater.UpdateAsync(
+                "/path/does-not-exist.csproj",
+                new DependencyGraph(Array.Empty<DependencyNode>(), Array.Empty<DependencyEdge>()),
+                new[] { new GraphChangeEvent(GraphChangeEventType.DocumentChanged, "/path/does-not-exist.csproj") }));
+    }
+
     private static string CopyFixtureToTemp()
     {
         var fixtureRoot = GetFixturePath();
