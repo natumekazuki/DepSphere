@@ -12,29 +12,26 @@ public partial class MainWindow : Window
     private string? _currentAnalysisPath;
     private CancellationTokenSource? _analysisCts;
     private bool _isAnalyzing;
+    private bool _isWebViewInitialized;
+    private Task? _webViewInitializationTask;
 
     public MainWindow()
     {
         InitializeComponent();
+        SetInitializationState(false);
         Loaded += OnLoaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        try
+        StatusText.Text = "WebView2 初期化中...";
+        if (!await EnsureWebView2InitializedAsync())
         {
-            await GraphWebView.EnsureCoreWebView2Async();
-            await CodeWebView.EnsureCoreWebView2Async();
-
-            GraphWebView.CoreWebView2.WebMessageReceived += OnGraphMessageReceived;
-
-            await LoadSampleAsync();
-            StatusText.Text = "準備完了";
+            return;
         }
-        catch (Exception ex)
-        {
-            StatusText.Text = "初期化失敗: " + ex.Message;
-        }
+
+        await LoadSampleAsync();
+        StatusText.Text = "準備完了";
     }
 
     private async void OnLoadSampleClick(object sender, RoutedEventArgs e)
@@ -42,6 +39,11 @@ public partial class MainWindow : Window
         if (_isAnalyzing)
         {
             StatusText.Text = "解析中はサンプル読込できません。";
+            return;
+        }
+
+        if (!await EnsureWebView2InitializedAsync())
+        {
             return;
         }
 
@@ -55,6 +57,11 @@ public partial class MainWindow : Window
         if (_isAnalyzing)
         {
             StatusText.Text = "解析中です。キャンセル後に再実行してください。";
+            return;
+        }
+
+        if (!await EnsureWebView2InitializedAsync())
+        {
             return;
         }
 
@@ -104,6 +111,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!await EnsureWebView2InitializedAsync())
+        {
+            return;
+        }
+
         if (!TryGetValidProjectPath(ProjectPathTextBox.Text, out var path, out var errorMessage))
         {
             StatusText.Text = errorMessage ?? "解析対象が不正です。";
@@ -135,6 +147,11 @@ public partial class MainWindow : Window
 
     private async Task LoadSampleAsync()
     {
+        if (!await EnsureWebView2InitializedAsync())
+        {
+            return;
+        }
+
         StatusText.Text = "サンプル解析中...";
 
         var sourceA = """
@@ -172,6 +189,11 @@ public partial class MainWindow : Window
     private async Task AnalyzeProjectAsync(string path, int progressInterval)
     {
         if (_isAnalyzing)
+        {
+            return;
+        }
+
+        if (!await EnsureWebView2InitializedAsync())
         {
             return;
         }
@@ -218,6 +240,12 @@ public partial class MainWindow : Window
 
     private void RenderGraph(DependencyGraph graph, string statusPrefix, AnalysisOptions? options)
     {
+        if (!_isWebViewInitialized)
+        {
+            StatusText.Text = "WebView2 初期化完了後に描画します。";
+            return;
+        }
+
         _currentGraph = graph;
         var view = GraphViewBuilder.Build(graph, options);
         GraphWebView.NavigateToString(GraphViewHtmlBuilder.Build(view));
@@ -305,18 +333,19 @@ public partial class MainWindow : Window
     private void SetAnalysisState(bool isAnalyzing, bool canCancel)
     {
         _isAnalyzing = isAnalyzing;
-        LoadSampleButton.IsEnabled = !isAnalyzing;
-        ReloadButton.IsEnabled = !isAnalyzing;
-        BrowseProjectButton.IsEnabled = !isAnalyzing;
-        AnalyzeButton.IsEnabled = !isAnalyzing;
-        ProjectPathTextBox.IsEnabled = !isAnalyzing;
-        ProgressIntervalTextBox.IsEnabled = !isAnalyzing;
-        CancelButton.IsEnabled = isAnalyzing && canCancel;
+        var canInteract = _isWebViewInitialized && !isAnalyzing;
+        LoadSampleButton.IsEnabled = canInteract;
+        ReloadButton.IsEnabled = canInteract;
+        BrowseProjectButton.IsEnabled = canInteract;
+        AnalyzeButton.IsEnabled = canInteract;
+        ProjectPathTextBox.IsEnabled = canInteract;
+        ProgressIntervalTextBox.IsEnabled = canInteract;
+        CancelButton.IsEnabled = _isWebViewInitialized && isAnalyzing && canCancel;
     }
 
     private void OnGraphMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
     {
-        if (_currentGraph is null)
+        if (!_isWebViewInitialized || _currentGraph is null)
         {
             return;
         }
@@ -367,5 +396,44 @@ public partial class MainWindow : Window
         builder.AppendLine($"// FanOut: {node.Metrics.FanOut}, InDegree: {node.Metrics.InDegree}");
 
         return new SourceCodeDocument("(metadata)", 1, 1, builder.ToString());
+    }
+
+    private async Task<bool> EnsureWebView2InitializedAsync()
+    {
+        if (_isWebViewInitialized)
+        {
+            return true;
+        }
+
+        _webViewInitializationTask ??= InitializeWebView2CoreAsync();
+
+        try
+        {
+            await _webViewInitializationTask;
+            return _isWebViewInitialized;
+        }
+        catch (Exception ex)
+        {
+            _webViewInitializationTask = null;
+            StatusText.Text = "初期化失敗: " + ex.Message;
+            return false;
+        }
+    }
+
+    private async Task InitializeWebView2CoreAsync()
+    {
+        await GraphWebView.EnsureCoreWebView2Async();
+        await CodeWebView.EnsureCoreWebView2Async();
+
+        GraphWebView.CoreWebView2.WebMessageReceived -= OnGraphMessageReceived;
+        GraphWebView.CoreWebView2.WebMessageReceived += OnGraphMessageReceived;
+
+        SetInitializationState(true);
+    }
+
+    private void SetInitializationState(bool initialized)
+    {
+        _isWebViewInitialized = initialized;
+        SetAnalysisState(_isAnalyzing, _analysisCts is not null && _isAnalyzing);
     }
 }
