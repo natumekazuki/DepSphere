@@ -75,3 +75,14 @@ pwsh -File .\scripts\windows\build-installer.ps1 `
   - リポジトリルート配下で実行しているか確認する。
 - 生成されたインストーラーが見つからない:
   - `artifacts\installer\<Version>\` を確認し、`ISCC` のログ出力を確認する。
+
+## 9. GitHub Actions連携
+- Workflow: `.github/workflows/windows-ci.yml`
+- 実行内容:
+  - `dotnet restore/build/test`（Windows）
+  - Inno Setup を導入（`ISCC.exe` 未導入時は `choco install innosetup`）
+  - `scripts/windows/build-installer.ps1` でセットアップEXEを生成
+  - `actions/upload-artifact` でインストーラーを保存
+- バージョン規則:
+  - タグビルド（`v1.2.3` / `1.2.3`）: タグ値を使用
+  - それ以外（push/PR）: `0.1.<run_number>`
