@@ -84,7 +84,7 @@
                     ResizeBehavior="PreviousAndNext"
                     ResizeDirection="Columns"
                     Background="#1E293B"
-                    ShowsPreview="True" />
+                    ShowsPreview="False" />
 
       <Border Grid.Column="2" Background="#020617" CornerRadius="14" BorderBrush="#1E293B" BorderThickness="1" ClipToBounds="True">
         <wv2:WebView2 x:Name="GraphWebView" />
@@ -98,7 +98,7 @@
                     ResizeBehavior="PreviousAndNext"
                     ResizeDirection="Columns"
                     Background="#1E293B"
-                    ShowsPreview="True" />
+                    ShowsPreview="False" />
 
       <Border Grid.Column="4" Background="#020617" CornerRadius="14" BorderBrush="#1E293B" BorderThickness="1" ClipToBounds="True">
         <Grid>
