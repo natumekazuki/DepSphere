@@ -18,10 +18,18 @@ public static class ClassMover
         }
 
         var context = await LoadTypeContextAsync(csprojPath, typeFqn, cancellationToken);
+        var targetFilePath = Path.Combine(Path.GetDirectoryName(context.SourceFilePath)!, context.TypeName + ".cs");
+        EnsureTargetFileDoesNotExist(targetFilePath);
+
+        var targetTypeFqn = BuildTypeFqn(targetNamespace, context.TypeName);
+        await EnsureTypeDoesNotExistInProjectAsync(csprojPath, targetTypeFqn, typeFqn, cancellationToken);
+
         await RemoveTypeFromSourceAsync(context, cancellationToken);
 
-        var targetFilePath = Path.Combine(Path.GetDirectoryName(context.SourceFilePath)!, context.TypeName + ".cs");
-        var movedSource = BuildMovedSource(context.SourceNamespace, targetNamespace, context.TypeDeclaration);
+        var movedSource = BuildMovedSource(
+            context.SourceNamespace,
+            targetNamespace,
+            context.TypeParts.SelectMany(part => part.Declarations).ToArray());
 
         await WriteMovedFileAsync(targetFilePath, movedSource, cancellationToken);
         return new MoveNamespaceResult(context.SourceFilePath, targetFilePath);
@@ -49,9 +57,23 @@ public static class ClassMover
             throw new InvalidOperationException("Target file path must differ from source file path.");
         }
 
+        if (context.TypeParts.Any(part =>
+            string.Equals(
+                Path.GetFullPath(part.FilePath),
+                Path.GetFullPath(resolvedTargetFilePath),
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException("Target file path must differ from source file path.");
+        }
+
+        EnsureTargetFileDoesNotExist(resolvedTargetFilePath);
+
         await RemoveTypeFromSourceAsync(context, cancellationToken);
 
-        var movedSource = BuildMovedSource(context.SourceNamespace, context.SourceNamespace, context.TypeDeclaration);
+        var movedSource = BuildMovedSource(
+            context.SourceNamespace,
+            context.SourceNamespace,
+            context.TypeParts.SelectMany(part => part.Declarations).ToArray());
         await WriteMovedFileAsync(resolvedTargetFilePath, movedSource, cancellationToken);
 
         return new MoveFileResult(context.SourceFilePath, resolvedTargetFilePath);
@@ -79,10 +101,17 @@ public static class ClassMover
             ? context.TypeName + ".cs"
             : targetRelativePath;
         var resolvedTargetFilePath = ResolveTargetFilePath(targetProjectPath, relativePath);
+        EnsureTargetFileDoesNotExist(resolvedTargetFilePath);
+
+        var targetTypeFqn = BuildTypeFqn(context.SourceNamespace, context.TypeName);
+        await EnsureTypeDoesNotExistInProjectAsync(targetProjectPath, targetTypeFqn, sourceTypeFqn: null, cancellationToken);
 
         await RemoveTypeFromSourceAsync(context, cancellationToken);
 
-        var movedSource = BuildMovedSource(context.SourceNamespace, context.SourceNamespace, context.TypeDeclaration);
+        var movedSource = BuildMovedSource(
+            context.SourceNamespace,
+            context.SourceNamespace,
+            context.TypeParts.SelectMany(part => part.Declarations).ToArray());
         await WriteMovedFileAsync(resolvedTargetFilePath, movedSource, cancellationToken);
 
         return new MoveProjectResult(
@@ -102,48 +131,70 @@ public static class ClassMover
             throw new ArgumentException("Project path is required.", nameof(csprojPath));
         }
 
+        if (!File.Exists(csprojPath))
+        {
+            throw new FileNotFoundException("Project file does not exist.", csprojPath);
+        }
+
         if (string.IsNullOrWhiteSpace(typeFqn))
         {
             throw new ArgumentException("Type FQN is required.", nameof(typeFqn));
         }
 
-        var graph = await DependencyAnalyzer.AnalyzePathAsync(csprojPath, cancellationToken);
-        var node = graph.Nodes.FirstOrDefault(item => item.Id == typeFqn)
-            ?? throw new InvalidOperationException($"Type not found: {typeFqn}");
+        var projectDirectory = Path.GetDirectoryName(csprojPath)
+            ?? throw new InvalidOperationException($"Project directory is invalid: {csprojPath}");
 
-        var sourceFilePath = node.Location?.FilePath;
-        if (string.IsNullOrWhiteSpace(sourceFilePath) || !File.Exists(sourceFilePath))
+        var sourceFiles = Directory
+            .EnumerateFiles(projectDirectory, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !IsBuildArtifactPath(path))
+            .ToArray();
+        var parts = new List<TypeDeclarationPart>();
+
+        foreach (var sourceFilePath in sourceFiles)
         {
-            throw new InvalidOperationException($"Source file not found: {sourceFilePath}");
+            var sourceCode = await File.ReadAllTextAsync(sourceFilePath, cancellationToken);
+            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, path: sourceFilePath, cancellationToken: cancellationToken);
+            var root = (CompilationUnitSyntax)await syntaxTree.GetRootAsync(cancellationToken);
+
+            var declarations = root
+                .DescendantNodes()
+                .OfType<TypeDeclarationSyntax>()
+                .Where(type => string.Equals(GetTypeFqn(type), typeFqn, StringComparison.Ordinal))
+                .ToArray();
+
+            if (declarations.Length > 0)
+            {
+                parts.Add(new TypeDeclarationPart(sourceFilePath, root, declarations));
+            }
         }
 
-        var sourceCode = await File.ReadAllTextAsync(sourceFilePath, cancellationToken);
-        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, path: sourceFilePath, cancellationToken: cancellationToken);
-        var root = (CompilationUnitSyntax)await syntaxTree.GetRootAsync(cancellationToken);
-
-        var targetType = root
-            .DescendantNodes()
-            .OfType<TypeDeclarationSyntax>()
-            .FirstOrDefault(type => GetTypeFqn(type) == typeFqn)
-            ?? throw new InvalidOperationException($"Type declaration not found in syntax tree: {typeFqn}");
+        if (parts.Count == 0)
+        {
+            throw new InvalidOperationException($"Type declaration not found: {typeFqn}");
+        }
 
         return new TypeDeclarationContext(
-            sourceFilePath,
+            parts[0].FilePath,
             GetNamespace(typeFqn),
             GetTypeName(typeFqn),
-            root,
-            targetType);
+            parts);
     }
 
     private static async Task RemoveTypeFromSourceAsync(TypeDeclarationContext context, CancellationToken cancellationToken)
     {
-        var updatedRoot = context.Root.RemoveNode(context.TypeDeclaration, SyntaxRemoveOptions.KeepNoTrivia)
-            ?? throw new InvalidOperationException("Failed to remove target type from source file.");
+        foreach (var part in context.TypeParts)
+        {
+            var updatedRoot = part.Root.RemoveNodes(part.Declarations, SyntaxRemoveOptions.KeepNoTrivia);
+            if (updatedRoot is not CompilationUnitSyntax compilationUnit)
+            {
+                throw new InvalidOperationException("Failed to remove target type from source file.");
+            }
 
-        await File.WriteAllTextAsync(
-            context.SourceFilePath,
-            updatedRoot.NormalizeWhitespace().ToFullString(),
-            cancellationToken);
+            await File.WriteAllTextAsync(
+                part.FilePath,
+                compilationUnit.NormalizeWhitespace().ToFullString(),
+                cancellationToken);
+        }
     }
 
     private static async Task WriteMovedFileAsync(string targetFilePath, string movedSource, CancellationToken cancellationToken)
@@ -170,7 +221,10 @@ public static class ClassMover
         return Path.Combine(projectDirectory, targetFilePath);
     }
 
-    private static string BuildMovedSource(string sourceNamespace, string targetNamespace, TypeDeclarationSyntax movedType)
+    private static string BuildMovedSource(
+        string sourceNamespace,
+        string targetNamespace,
+        IReadOnlyList<TypeDeclarationSyntax> movedTypes)
     {
         var lines = new List<string>
         {
@@ -185,8 +239,12 @@ public static class ClassMover
             lines.Insert(1, string.Empty);
         }
 
-        lines.Add(movedType.NormalizeWhitespace().ToFullString());
-        lines.Add(string.Empty);
+        foreach (var movedType in movedTypes)
+        {
+            lines.Add(movedType.NormalizeWhitespace().ToFullString());
+            lines.Add(string.Empty);
+        }
+
         return string.Join(Environment.NewLine, lines);
     }
 
@@ -196,6 +254,19 @@ public static class ClassMover
         return namespaceNode is null
             ? type.Identifier.ValueText
             : namespaceNode.Name + "." + type.Identifier.ValueText;
+    }
+
+    private static bool IsBuildArtifactPath(string path)
+    {
+        var normalized = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        var marker = Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar;
+        if (normalized.Contains(marker, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        marker = Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar;
+        return normalized.Contains(marker, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetNamespace(string typeFqn)
@@ -210,10 +281,46 @@ public static class ClassMover
         return lastDot > 0 ? typeFqn[(lastDot + 1)..] : typeFqn;
     }
 
+    private static string BuildTypeFqn(string namespaceName, string typeName)
+    {
+        return string.IsNullOrWhiteSpace(namespaceName)
+            ? typeName
+            : namespaceName + "." + typeName;
+    }
+
+    private static void EnsureTargetFileDoesNotExist(string targetFilePath)
+    {
+        if (File.Exists(targetFilePath))
+        {
+            throw new InvalidOperationException($"Target file already exists: {targetFilePath}");
+        }
+    }
+
+    private static async Task EnsureTypeDoesNotExistInProjectAsync(
+        string projectPath,
+        string targetTypeFqn,
+        string? sourceTypeFqn,
+        CancellationToken cancellationToken)
+    {
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(projectPath, cancellationToken);
+        var exists = graph.Nodes.Any(node =>
+            string.Equals(node.Id, targetTypeFqn, StringComparison.Ordinal) &&
+            !string.Equals(node.Id, sourceTypeFqn, StringComparison.Ordinal));
+
+        if (exists)
+        {
+            throw new InvalidOperationException($"Type already exists in target scope: {targetTypeFqn}");
+        }
+    }
+
     private sealed record TypeDeclarationContext(
         string SourceFilePath,
         string SourceNamespace,
         string TypeName,
+        IReadOnlyList<TypeDeclarationPart> TypeParts);
+
+    private sealed record TypeDeclarationPart(
+        string FilePath,
         CompilationUnitSyntax Root,
-        TypeDeclarationSyntax TypeDeclaration);
+        IReadOnlyList<TypeDeclarationSyntax> Declarations);
 }
