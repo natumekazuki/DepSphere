@@ -17,10 +17,13 @@ public partial class MainWindow : Window
     private bool _isWebViewInitialized;
     private Task? _webViewInitializationTask;
     private string? _lastErrorDetails;
+    private bool _isOperationsPanelVisible = true;
+    private GridLength _operationsPanelWidth = new(280);
 
     public MainWindow()
     {
         InitializeComponent();
+        ApplyOperationsPanelVisibility();
         SetInitializationState(false);
         Loaded += OnLoaded;
     }
@@ -146,6 +149,12 @@ public partial class MainWindow : Window
         CancelButton.IsEnabled = false;
         SetStatusMessage("キャンセル要求を送信しました...");
         _analysisCts.Cancel();
+    }
+
+    private void OnToggleOperationsPanelClick(object sender, RoutedEventArgs e)
+    {
+        _isOperationsPanelVisible = !_isOperationsPanelVisible;
+        ApplyOperationsPanelVisibility();
     }
 
     private async Task LoadSampleAsync()
@@ -462,6 +471,31 @@ public partial class MainWindow : Window
     private void SetStatusMessage(string message)
     {
         StatusText.Text = message;
+    }
+
+    private void ApplyOperationsPanelVisibility()
+    {
+        if (_isOperationsPanelVisible)
+        {
+            var restored = _operationsPanelWidth.Value > 80 ? _operationsPanelWidth : new GridLength(280);
+            LeftPanelColumn.Width = restored;
+            LeftSplitterColumn.Width = new GridLength(6);
+            OperationsPanelBorder.Visibility = Visibility.Visible;
+            LeftPanelSplitter.Visibility = Visibility.Visible;
+            ToggleOperationsPanelButton.Content = "操作パネルを隠す";
+            return;
+        }
+
+        if (LeftPanelColumn.Width.Value > 0)
+        {
+            _operationsPanelWidth = LeftPanelColumn.Width;
+        }
+
+        LeftPanelColumn.Width = new GridLength(0);
+        LeftSplitterColumn.Width = new GridLength(0);
+        OperationsPanelBorder.Visibility = Visibility.Collapsed;
+        LeftPanelSplitter.Visibility = Visibility.Collapsed;
+        ToggleOperationsPanelButton.Content = "操作パネルを表示";
     }
 
     private void SetErrorDetails(string summary, Exception ex)

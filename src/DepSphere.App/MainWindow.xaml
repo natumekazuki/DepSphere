@@ -22,6 +22,7 @@
           <TextBlock Text="  /  WPF Host Preview" FontSize="13" Foreground="{StaticResource BrushMuted}" VerticalAlignment="Bottom" Margin="8,0,0,1" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="ToggleOperationsPanelButton" Content="操作パネルを隠す" Click="OnToggleOperationsPanelClick" />
           <Button x:Name="LoadSampleButton" Content="サンプル読込" Click="OnLoadSampleClick" />
           <Button x:Name="ReloadButton" Content="再解析" Click="OnReloadClick" />
           <Button x:Name="CancelButton" Content="キャンセル" Click="OnCancelClick" IsEnabled="False" />
@@ -31,14 +32,14 @@
 
     <Grid Grid.Row="1" Margin="14">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="280" />
-        <ColumnDefinition Width="10" />
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="10" />
-        <ColumnDefinition Width="420" />
+        <ColumnDefinition x:Name="LeftPanelColumn" Width="280" MinWidth="0" />
+        <ColumnDefinition x:Name="LeftSplitterColumn" Width="6" />
+        <ColumnDefinition x:Name="GraphPanelColumn" Width="*" MinWidth="340" />
+        <ColumnDefinition x:Name="GraphCodeSplitterColumn" Width="6" />
+        <ColumnDefinition x:Name="CodePanelColumn" Width="420" MinWidth="280" />
       </Grid.ColumnDefinitions>
 
-      <Border Grid.Column="0" Background="{StaticResource BrushPanel}" CornerRadius="14" Padding="14" BorderBrush="#1E293B" BorderThickness="1">
+      <Border x:Name="OperationsPanelBorder" Grid.Column="0" Background="{StaticResource BrushPanel}" CornerRadius="14" Padding="14" BorderBrush="#1E293B" BorderThickness="1">
         <StackPanel>
           <TextBlock Text="操作" FontSize="15" FontWeight="SemiBold" />
           <TextBlock Margin="0,8,0,0" Foreground="{StaticResource BrushMuted}" Text="ノードをクリックすると右ペインにコードが表示されます。" TextWrapping="Wrap" />
@@ -75,9 +76,29 @@
         </StackPanel>
       </Border>
 
+      <GridSplitter x:Name="LeftPanelSplitter"
+                    Grid.Column="1"
+                    Width="6"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    ResizeBehavior="PreviousAndNext"
+                    ResizeDirection="Columns"
+                    Background="#1E293B"
+                    ShowsPreview="True" />
+
       <Border Grid.Column="2" Background="#020617" CornerRadius="14" BorderBrush="#1E293B" BorderThickness="1" ClipToBounds="True">
         <wv2:WebView2 x:Name="GraphWebView" />
       </Border>
+
+      <GridSplitter x:Name="GraphCodeSplitter"
+                    Grid.Column="3"
+                    Width="6"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    ResizeBehavior="PreviousAndNext"
+                    ResizeDirection="Columns"
+                    Background="#1E293B"
+                    ShowsPreview="True" />
 
       <Border Grid.Column="4" Background="#020617" CornerRadius="14" BorderBrush="#1E293B" BorderThickness="1" ClipToBounds="True">
         <wv2:WebView2 x:Name="CodeWebView" />
