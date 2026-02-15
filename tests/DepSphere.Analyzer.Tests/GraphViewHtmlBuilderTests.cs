@@ -42,11 +42,13 @@ public class GraphViewHtmlBuilderTests
 
         var html = GraphViewHtmlBuilder.Build(view);
 
-        Assert.Contains("OrbitControls.js", html);
-        Assert.Contains("controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;", html);
-        Assert.Contains("controls.mouseButtons.LEFT = THREE.MOUSE.PAN;", html);
+        Assert.Contains("createCameraController", html);
+        Assert.Contains("dragMode = 'rotate'", html);
+        Assert.Contains("dragMode = 'pan'", html);
+        Assert.Contains("surface.addEventListener('wheel', handleWheel", html);
         Assert.Contains("node-scale", html);
         Assert.Contains("spread-scale", html);
+        Assert.DoesNotContain("OrbitControls.js", html);
         Assert.DoesNotContain("scene.rotation.y +=", html);
     }
 

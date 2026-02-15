@@ -63,7 +63,6 @@ public static class GraphViewHtmlBuilder
     <div id="node-info-body">ノードをクリックするとクラス名とメソッド名を表示します。</div>
   </div>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
   <script>
     window.__depSphereGraph = JSON.parse(atob("{{base64}}"));
 
@@ -77,22 +76,18 @@ public static class GraphViewHtmlBuilder
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2600);
     camera.position.set(0, 0, 200);
+    camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(window.innerWidth, window.innerHeight);
 
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.screenSpacePanning = true;
-    controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
-    controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
-    controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
-
+    canvas.style.touchAction = 'none';
     canvas.addEventListener('contextmenu', (event) => {
       event.preventDefault();
     });
+
+    const cameraControl = createCameraController(camera, canvas);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.78);
     scene.add(ambient);
@@ -119,6 +114,15 @@ public static class GraphViewHtmlBuilder
       const pad = 14;
       const canvasEl = document.createElement('canvas');
       const ctx = canvasEl.getContext('2d');
+      if (!ctx) {
+        const fallbackMaterial = new THREE.SpriteMaterial({ color: 0xe2e8f0 });
+        const fallback = new THREE.Sprite(fallbackMaterial);
+        fallback.scale.set(18, 5, 1);
+        fallback.userData.baseScale = new THREE.Vector3(18, 5, 1);
+        fallback.renderOrder = 10;
+        return fallback;
+      }
+
       ctx.font = `600 ${fontSize}px sans-serif`;
       const textWidth = Math.max(30, Math.ceil(ctx.measureText(text).width));
       canvasEl.width = textWidth + pad * 2;
@@ -276,9 +280,7 @@ public static class GraphViewHtmlBuilder
       selectedNodeId = nodeId;
       applyVisualSettings();
 
-      controls.target.copy(target.position);
-      const desired = target.position.clone().add(new THREE.Vector3(0, 0, 52));
-      camera.position.copy(desired);
+      cameraControl.focus(target.position, 52);
       updateNodeInfo(target.userData.node);
     };
 
@@ -316,9 +318,160 @@ public static class GraphViewHtmlBuilder
 
     applyVisualSettings();
 
+    function createCameraController(camera, surface) {
+      const target = new THREE.Vector3(0, 0, 0);
+      const spherical = new THREE.Spherical();
+      const offset = new THREE.Vector3();
+      const right = new THREE.Vector3();
+      const up = new THREE.Vector3();
+      const panOffset = new THREE.Vector3();
+
+      let dragMode = null;
+      let dragPointerId = null;
+      let lastX = 0;
+      let lastY = 0;
+
+      const rotateSpeed = 0.0055;
+      const panSpeed = 0.0018;
+      const zoomStep = 1.12;
+      const minDistance = 12;
+      const maxDistance = 1800;
+
+      function clampDistance(value) {
+        return Math.min(maxDistance, Math.max(minDistance, value));
+      }
+
+      function syncFromCamera() {
+        offset.copy(camera.position).sub(target);
+        if (offset.lengthSq() < 1e-8) {
+          offset.set(0, 0, minDistance);
+        }
+
+        spherical.setFromVector3(offset);
+        spherical.radius = clampDistance(spherical.radius);
+        spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, spherical.phi));
+      }
+
+      function applyCamera() {
+        offset.setFromSpherical(spherical);
+        camera.position.copy(target).add(offset);
+        camera.lookAt(target);
+      }
+
+      function handlePointerDown(event) {
+        if (event.button === 2) {
+          dragMode = 'rotate';
+        } else if (event.button === 0) {
+          dragMode = 'pan';
+        } else {
+          return;
+        }
+
+        dragPointerId = event.pointerId;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        if (surface.setPointerCapture) {
+          surface.setPointerCapture(event.pointerId);
+        }
+      }
+
+      function handlePointerMove(event) {
+        if (!dragMode || (dragPointerId !== null && event.pointerId !== dragPointerId)) {
+          return;
+        }
+
+        const dx = event.clientX - lastX;
+        const dy = event.clientY - lastY;
+        lastX = event.clientX;
+        lastY = event.clientY;
+
+        if (dragMode === 'rotate') {
+          spherical.theta -= dx * rotateSpeed;
+          spherical.phi -= dy * rotateSpeed;
+          spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, spherical.phi));
+          applyCamera();
+          return;
+        }
+
+        const distance = Math.max(minDistance, spherical.radius);
+        const scale = distance * panSpeed;
+
+        camera.updateMatrix();
+        right.setFromMatrixColumn(camera.matrix, 0);
+        up.setFromMatrixColumn(camera.matrix, 1);
+
+        panOffset.copy(right).multiplyScalar(-dx * scale);
+        panOffset.add(up.multiplyScalar(dy * scale));
+
+        target.add(panOffset);
+        camera.position.add(panOffset);
+        syncFromCamera();
+        applyCamera();
+      }
+
+      function handlePointerUp(event) {
+        if (dragPointerId !== null && event.pointerId !== dragPointerId) {
+          return;
+        }
+
+        dragMode = null;
+        dragPointerId = null;
+        if (surface.releasePointerCapture && event.pointerId !== undefined) {
+          try {
+            surface.releasePointerCapture(event.pointerId);
+          } catch {
+            // no-op
+          }
+        }
+      }
+
+      function handleWheel(event) {
+        event.preventDefault();
+        const factor = event.deltaY < 0 ? (1 / zoomStep) : zoomStep;
+        spherical.radius = clampDistance(spherical.radius * factor);
+        applyCamera();
+      }
+
+      function setTarget(position) {
+        target.copy(position);
+        syncFromCamera();
+        applyCamera();
+      }
+
+      function focus(position, distance) {
+        target.copy(position);
+
+        if (offset.lengthSq() < 1e-8) {
+          offset.set(0, 0, 1);
+        }
+
+        const desiredDistance = clampDistance(distance || spherical.radius || 90);
+        offset.normalize().multiplyScalar(desiredDistance);
+        spherical.setFromVector3(offset);
+        spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, spherical.phi));
+        applyCamera();
+      }
+
+      syncFromCamera();
+      applyCamera();
+
+      surface.addEventListener('pointerdown', handlePointerDown);
+      surface.addEventListener('pointermove', handlePointerMove);
+      surface.addEventListener('pointerup', handlePointerUp);
+      surface.addEventListener('pointercancel', handlePointerUp);
+      surface.addEventListener('wheel', handleWheel, { passive: false });
+
+      return {
+        setTarget,
+        syncFromCamera,
+        focus,
+        update: function() { }
+      };
+    }
+
     function animate() {
       requestAnimationFrame(animate);
-      controls.update();
+      cameraControl.update();
       renderer.render(scene, camera);
     }
 
