@@ -183,6 +183,7 @@ sequenceDiagram
   - SourceLocationが無い場合はノードのメトリクス情報を右ペインへ表示する。
 - 解析入力導線:
   - WebView2 初期化完了までは操作系UIを無効化し、初期化完了後に有効化する。
+  - WebView2 の `UserDataFolder` は `LocalAppData/DepSphere/WebView2` 配下を使用し、アクセス拒否を回避する。
   - 左ペインの `ProjectPathTextBox` + `参照` ボタンで `.sln/.csproj` を選択する。
   - `解析実行` ボタンで `DependencyAnalyzer.AnalyzePathAsync` を起動し、中央グラフと右ペイン初期表示を更新する。
   - `再解析` は直近の解析パスを優先し、未指定時はサンプル解析にフォールバックする。
@@ -190,6 +191,7 @@ sequenceDiagram
   - `キャンセル` ボタンで `CancellationToken` を通知し、停止時は状態表示を `解析をキャンセルしました。` に更新する。
   - 解析中の状態表示は `prepare/load/compile/metrics/complete` ステージで段階更新する。
   - `進捗更新間隔（型件数）` をUIで指定し、`metrics` ステージの更新頻度を調整可能にする。
+  - 例外発生時は詳細（型名/メッセージ/StackTrace）を左ペインに表示し、`エラー詳細をコピー` でクリップボードへ出力できる。
 - ビルド方針:
   - `net8.0-windows10.0.19041.0` + `UseWPF=true`
   - 非Windows環境ビルドのため `EnableWindowsTargeting=true` を設定する。

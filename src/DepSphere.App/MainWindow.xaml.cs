@@ -1,4 +1,6 @@
 using DepSphere.Analyzer;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using Microsoft.Win32;
 using System.IO;
 using System.Text;
@@ -14,6 +16,7 @@ public partial class MainWindow : Window
     private bool _isAnalyzing;
     private bool _isWebViewInitialized;
     private Task? _webViewInitializationTask;
+    private string? _lastErrorDetails;
 
     public MainWindow()
     {
@@ -31,7 +34,7 @@ public partial class MainWindow : Window
         }
 
         await LoadSampleAsync();
-        StatusText.Text = "準備完了";
+        SetStatusMessage("準備完了");
     }
 
     private async void OnLoadSampleClick(object sender, RoutedEventArgs e)
@@ -69,7 +72,7 @@ public partial class MainWindow : Window
         {
             if (!TryGetProgressInterval(ProgressIntervalTextBox.Text, out var progressInterval, out var progressError))
             {
-                StatusText.Text = progressError ?? "進捗更新間隔が不正です。";
+                SetStatusMessage(progressError ?? "進捗更新間隔が不正です。");
                 return;
             }
 
@@ -118,13 +121,13 @@ public partial class MainWindow : Window
 
         if (!TryGetValidProjectPath(ProjectPathTextBox.Text, out var path, out var errorMessage))
         {
-            StatusText.Text = errorMessage ?? "解析対象が不正です。";
+            SetStatusMessage(errorMessage ?? "解析対象が不正です。");
             return;
         }
 
         if (!TryGetProgressInterval(ProgressIntervalTextBox.Text, out var progressInterval, out var progressError))
         {
-            StatusText.Text = progressError ?? "進捗更新間隔が不正です。";
+            SetStatusMessage(progressError ?? "進捗更新間隔が不正です。");
             return;
         }
 
@@ -136,12 +139,12 @@ public partial class MainWindow : Window
     {
         if (!_isAnalyzing || _analysisCts is null)
         {
-            StatusText.Text = "実行中の解析はありません。";
+            SetStatusMessage("実行中の解析はありません。");
             return;
         }
 
         CancelButton.IsEnabled = false;
-        StatusText.Text = "キャンセル要求を送信しました...";
+        SetStatusMessage("キャンセル要求を送信しました...");
         _analysisCts.Cancel();
     }
 
@@ -152,7 +155,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        StatusText.Text = "サンプル解析中...";
+        SetStatusMessage("サンプル解析中...");
 
         var sourceA = """
             namespace Demo;
@@ -201,12 +204,12 @@ public partial class MainWindow : Window
         using var cts = new CancellationTokenSource();
         _analysisCts = cts;
         SetAnalysisState(isAnalyzing: true, canCancel: true);
-        StatusText.Text = "解析中...";
+        SetStatusMessage("解析中...");
         var progress = new Progress<AnalysisProgress>(item =>
         {
             if (_isAnalyzing)
             {
-                StatusText.Text = FormatProgress(item);
+                SetStatusMessage(FormatProgress(item));
             }
         });
 
@@ -221,11 +224,11 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = "解析をキャンセルしました。";
+            SetStatusMessage("解析をキャンセルしました。");
         }
         catch (Exception ex)
         {
-            StatusText.Text = "解析失敗: " + ex.Message;
+            SetErrorDetails("解析失敗: " + ex.Message, ex);
         }
         finally
         {
@@ -242,7 +245,7 @@ public partial class MainWindow : Window
     {
         if (!_isWebViewInitialized)
         {
-            StatusText.Text = "WebView2 初期化完了後に描画します。";
+            SetStatusMessage("WebView2 初期化完了後に描画します。");
             return;
         }
 
@@ -251,7 +254,7 @@ public partial class MainWindow : Window
         GraphWebView.NavigateToString(GraphViewHtmlBuilder.Build(view));
         CodeWebView.NavigateToString(BuildInitialCodeViewHtml());
         SelectedNodeText.Text = "(未選択)";
-        StatusText.Text = $"{statusPrefix} / ノード {view.Nodes.Count} / エッジ {view.Edges.Count}";
+        SetStatusMessage($"{statusPrefix} / ノード {view.Nodes.Count} / エッジ {view.Edges.Count}");
     }
 
     private static string BuildInitialCodeViewHtml()
@@ -370,13 +373,13 @@ public partial class MainWindow : Window
         if (GraphSelectionCoordinator.TryOpenFromMessage(_currentGraph, e.WebMessageAsJson, out var document) && document is not null)
         {
             CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(document));
-            StatusText.Text = "コード表示を更新";
+            SetStatusMessage("コード表示を更新");
             return;
         }
 
         var fallback = BuildFallbackDocument(_currentGraph, message.NodeId);
         CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(fallback));
-        StatusText.Text = "メタ情報表示にフォールバック";
+        SetStatusMessage("メタ情報表示にフォールバック");
     }
 
     private static SourceCodeDocument BuildFallbackDocument(DependencyGraph graph, string nodeId)
@@ -415,13 +418,14 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             _webViewInitializationTask = null;
-            StatusText.Text = "初期化失敗: " + ex.Message;
+            SetErrorDetails("初期化失敗: " + ex.Message, ex);
             return false;
         }
     }
 
     private async Task InitializeWebView2CoreAsync()
     {
+        ConfigureWebViewCreationProperties();
         await GraphWebView.EnsureCoreWebView2Async();
         await CodeWebView.EnsureCoreWebView2Async();
 
@@ -435,5 +439,68 @@ public partial class MainWindow : Window
     {
         _isWebViewInitialized = initialized;
         SetAnalysisState(_isAnalyzing, _analysisCts is not null && _isAnalyzing);
+    }
+
+    private void ConfigureWebViewCreationProperties()
+    {
+        var root = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "DepSphere",
+            "WebView2");
+        var graphUserData = Path.Combine(root, "Graph");
+        var codeUserData = Path.Combine(root, "Code");
+        Directory.CreateDirectory(graphUserData);
+        Directory.CreateDirectory(codeUserData);
+
+        GraphWebView.CreationProperties ??= new CoreWebView2CreationProperties();
+        CodeWebView.CreationProperties ??= new CoreWebView2CreationProperties();
+
+        GraphWebView.CreationProperties.UserDataFolder = graphUserData;
+        CodeWebView.CreationProperties.UserDataFolder = codeUserData;
+    }
+
+    private void SetStatusMessage(string message)
+    {
+        StatusText.Text = message;
+    }
+
+    private void SetErrorDetails(string summary, Exception ex)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(summary);
+        builder.AppendLine("----");
+        builder.AppendLine(ex.GetType().FullName ?? ex.GetType().Name);
+        builder.AppendLine($"HResult: 0x{ex.HResult:X8}");
+        builder.AppendLine(ex.Message);
+        if (!string.IsNullOrWhiteSpace(ex.StackTrace))
+        {
+            builder.AppendLine("---- StackTrace ----");
+            builder.AppendLine(ex.StackTrace);
+        }
+
+        _lastErrorDetails = builder.ToString();
+        ErrorDetailsTextBox.Text = _lastErrorDetails;
+        ErrorDetailsTextBox.Visibility = Visibility.Visible;
+        CopyErrorButton.IsEnabled = true;
+        SetStatusMessage(summary);
+    }
+
+    private void OnCopyErrorClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_lastErrorDetails))
+        {
+            SetStatusMessage("コピー対象のエラー詳細がありません。");
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(_lastErrorDetails);
+            SetStatusMessage("エラー詳細をクリップボードにコピーしました。");
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage("コピー失敗: " + ex.Message);
+        }
     }
 }

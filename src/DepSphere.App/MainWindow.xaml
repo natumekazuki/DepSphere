@@ -63,6 +63,15 @@
 
           <TextBlock Text="状態" FontWeight="SemiBold" />
           <TextBlock x:Name="StatusText" Margin="0,6,0,0" Foreground="{StaticResource BrushMuted}" Text="初期化待ち" TextWrapping="Wrap" />
+          <Button x:Name="CopyErrorButton" Margin="0,8,0,0" Content="エラー詳細をコピー" Click="OnCopyErrorClick" IsEnabled="False" />
+          <TextBox x:Name="ErrorDetailsTextBox"
+                   Margin="0,8,0,0"
+                   Height="120"
+                   TextWrapping="Wrap"
+                   AcceptsReturn="True"
+                   VerticalScrollBarVisibility="Auto"
+                   IsReadOnly="True"
+                   Visibility="Collapsed" />
         </StackPanel>
       </Border>
 
