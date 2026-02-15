@@ -50,10 +50,14 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("spread-scale", html);
         Assert.Contains("clear-filter", html);
         Assert.Contains("fit-view", html);
+        Assert.Contains("history-back", html);
+        Assert.Contains("history-forward", html);
         Assert.Contains("filter-status", html);
         Assert.Contains("search-input", html);
         Assert.Contains("表示限定解除", html);
         Assert.Contains("Fit to View", html);
+        Assert.Contains("戻る", html);
+        Assert.Contains("進む", html);
         Assert.Contains("ホバー: ノード強調", html);
         Assert.DoesNotContain("OrbitControls.js", html);
         Assert.DoesNotContain("scene.rotation.y +=", html);
@@ -99,9 +103,27 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("window.addEventListener('keydown'", html);
         Assert.Contains("event.key === 'Escape'", html);
         Assert.Contains("key === 'f'", html);
+        Assert.Contains("event.altKey && key === 'arrowleft'", html);
+        Assert.Contains("event.altKey && key === 'arrowright'", html);
         Assert.Contains("searchInput.focus()", html);
         Assert.Contains("fitVisibleNodes", html);
         Assert.Contains("fitToPoints", html);
+    }
+
+    [Fact]
+    public void 履歴ナビゲーションスクリプトを含める()
+    {
+        var view = BuildSampleView();
+
+        var html = GraphViewHtmlBuilder.Build(view);
+
+        Assert.Contains("const historyEntries = []", html);
+        Assert.Contains("function pushHistoryState()", html);
+        Assert.Contains("function navigateHistory(offset)", html);
+        Assert.Contains("historyBackButton.addEventListener('click'", html);
+        Assert.Contains("historyForwardButton.addEventListener('click'", html);
+        Assert.Contains("captureState", html);
+        Assert.Contains("applyState", html);
     }
 
     [Fact]

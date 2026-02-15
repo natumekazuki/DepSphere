@@ -128,6 +128,10 @@ public static class GraphViewHtmlBuilder
       <button id="search-button" type="button">検索</button>
     </div>
     <div class="toolbar">
+      <button id="history-back" type="button" disabled>戻る</button>
+      <button id="history-forward" type="button" disabled>進む</button>
+    </div>
+    <div class="toolbar">
       <button id="fit-view" type="button">Fit to View</button>
       <button id="clear-filter" type="button" disabled>表示限定解除</button>
     </div>
@@ -145,6 +149,8 @@ public static class GraphViewHtmlBuilder
     const infoBody = document.getElementById('node-info-body');
     const nodeScaleInput = document.getElementById('node-scale');
     const spreadScaleInput = document.getElementById('spread-scale');
+    const historyBackButton = document.getElementById('history-back');
+    const historyForwardButton = document.getElementById('history-forward');
     const fitViewButton = document.getElementById('fit-view');
     const clearFilterButton = document.getElementById('clear-filter');
     const filterStatus = document.getElementById('filter-status');
@@ -188,6 +194,10 @@ public static class GraphViewHtmlBuilder
     let visibleNodeIds = null;
     let filterRootNodeId = null;
     let singleClickTimer = null;
+    const historyEntries = [];
+    const historyMax = 80;
+    let historyIndex = -1;
+    let isApplyingHistory = false;
 
     function hexColor(color) {
       if (!color || !color.startsWith('#')) return 0x3b82f6;
@@ -421,15 +431,103 @@ public static class GraphViewHtmlBuilder
       applyVisualSettings();
     }
 
-    function clearNodeFilter() {
+    function clearNodeFilter(recordHistory = true) {
       visibleNodeIds = null;
       filterRootNodeId = null;
       updateFilterButtonState();
       applyVisualSettings();
+      if (recordHistory) {
+        pushHistoryState();
+      }
     }
 
     function updateFilterButtonState() {
       clearFilterButton.disabled = visibleNodeIds === null;
+    }
+
+    function updateHistoryButtons() {
+      historyBackButton.disabled = historyIndex <= 0;
+      historyForwardButton.disabled = historyIndex < 0 || historyIndex >= historyEntries.length - 1;
+    }
+
+    function buildStateSignature(state) {
+      const selected = state.selectedNodeId || '';
+      const root = state.filterRootNodeId || '';
+      const visible = state.visibleNodeIds ? state.visibleNodeIds.join('|') : '*';
+      const camera = state.cameraState
+        ? `${state.cameraState.position.join(',')}|${state.cameraState.target.join(',')}`
+        : '';
+      return `${selected}#${root}#${visible}#${camera}`;
+    }
+
+    function captureUiState() {
+      const state = {
+        selectedNodeId,
+        filterRootNodeId,
+        visibleNodeIds: visibleNodeIds ? Array.from(visibleNodeIds).sort() : null,
+        cameraState: cameraControl.captureState()
+      };
+
+      state.signature = buildStateSignature(state);
+      return state;
+    }
+
+    function applyUiState(state) {
+      isApplyingHistory = true;
+      try {
+        selectedNodeId = state.selectedNodeId || null;
+        hoveredNodeId = selectedNodeId;
+        filterRootNodeId = state.filterRootNodeId || null;
+        visibleNodeIds = state.visibleNodeIds ? new Set(state.visibleNodeIds) : null;
+
+        updateFilterButtonState();
+        applyVisualSettings();
+        cameraControl.applyState(state.cameraState);
+
+        const selectedNode = selectedNodeId ? nodeMap.get(selectedNodeId) : null;
+        updateNodeInfo(selectedNode ? selectedNode.userData.node : null);
+      } finally {
+        isApplyingHistory = false;
+      }
+    }
+
+    function pushHistoryState() {
+      if (isApplyingHistory) {
+        return;
+      }
+
+      const state = captureUiState();
+      if (historyIndex >= 0 && historyEntries[historyIndex] && historyEntries[historyIndex].signature === state.signature) {
+        updateHistoryButtons();
+        return;
+      }
+
+      if (historyIndex < historyEntries.length - 1) {
+        historyEntries.splice(historyIndex + 1);
+      }
+
+      historyEntries.push(state);
+      if (historyEntries.length > historyMax) {
+        historyEntries.shift();
+      }
+
+      historyIndex = historyEntries.length - 1;
+      updateHistoryButtons();
+    }
+
+    function navigateHistory(offset) {
+      if (historyEntries.length === 0) {
+        return;
+      }
+
+      const nextIndex = historyIndex + offset;
+      if (nextIndex < 0 || nextIndex >= historyEntries.length) {
+        return;
+      }
+
+      historyIndex = nextIndex;
+      applyUiState(historyEntries[historyIndex]);
+      updateHistoryButtons();
     }
 
     function updateFilterStatus() {
@@ -450,13 +548,16 @@ public static class GraphViewHtmlBuilder
       return points;
     }
 
-    function fitVisibleNodes() {
+    function fitVisibleNodes(recordHistory = true) {
       const points = getVisiblePoints();
       if (points.length === 0) {
         return;
       }
 
       cameraControl.fitToPoints(points, 1.35);
+      if (recordHistory) {
+        pushHistoryState();
+      }
     }
 
     function findNodeIdByQuery(rawQuery) {
@@ -482,7 +583,7 @@ public static class GraphViewHtmlBuilder
       return partial ? partial.id : null;
     }
 
-    function focusNodeById(nodeId, filterRelated, openCode) {
+    function focusNodeById(nodeId, filterRelated, openCode, recordHistory = true) {
       const target = nodeMap.get(nodeId);
       if (!target) {
         return false;
@@ -499,6 +600,10 @@ public static class GraphViewHtmlBuilder
       updateNodeInfo(target.userData.node);
       if (openCode) {
         postNodeSelected(nodeId);
+      }
+
+      if (recordHistory) {
+        pushHistoryState();
       }
 
       return true;
@@ -537,18 +642,11 @@ public static class GraphViewHtmlBuilder
     }
 
     window.depSphereFocusNode = function(nodeId) {
-      const target = nodeMap.get(nodeId);
-      if (!target) return;
-
       if (visibleNodeIds && !visibleNodeIds.has(nodeId)) {
-        clearNodeFilter();
+        clearNodeFilter(false);
       }
 
-      selectedNodeId = nodeId;
-      applyVisualSettings();
-
-      cameraControl.focus(target.position, 52);
-      updateNodeInfo(target.userData.node);
+      focusNodeById(nodeId, false, false, false);
     };
 
     canvas.addEventListener('click', (event) => {
@@ -572,6 +670,7 @@ public static class GraphViewHtmlBuilder
         hoveredNodeId = selectedId;
         setConnectedNodeFilter(selectedId);
         updateNodeInfo(selected.userData.node);
+        pushHistoryState();
       }, 220);
     });
 
@@ -597,6 +696,8 @@ public static class GraphViewHtmlBuilder
 
     nodeScaleInput.addEventListener('input', applyVisualSettings);
     spreadScaleInput.addEventListener('input', applyVisualSettings);
+    historyBackButton.addEventListener('click', () => navigateHistory(-1));
+    historyForwardButton.addEventListener('click', () => navigateHistory(1));
     fitViewButton.addEventListener('click', fitVisibleNodes);
     clearFilterButton.addEventListener('click', clearNodeFilter);
     searchButton.addEventListener('click', runSearch);
@@ -608,6 +709,18 @@ public static class GraphViewHtmlBuilder
     });
     window.addEventListener('keydown', (event) => {
       const key = (event.key || '').toLowerCase();
+      if (event.altKey && key === 'arrowleft') {
+        event.preventDefault();
+        navigateHistory(-1);
+        return;
+      }
+
+      if (event.altKey && key === 'arrowright') {
+        event.preventDefault();
+        navigateHistory(1);
+        return;
+      }
+
       if ((event.ctrlKey || event.metaKey) && key === 'f') {
         event.preventDefault();
         searchInput.focus();
@@ -636,8 +749,10 @@ public static class GraphViewHtmlBuilder
     });
 
     updateFilterButtonState();
+    updateHistoryButtons();
     applyVisualSettings();
-    fitVisibleNodes();
+    fitVisibleNodes(false);
+    pushHistoryState();
 
     function createCameraController(camera, surface) {
       const target = new THREE.Vector3(0, 0, 0);
@@ -799,6 +914,28 @@ public static class GraphViewHtmlBuilder
         applyCamera();
       }
 
+      function round4(value) {
+        return Math.round(value * 10000) / 10000;
+      }
+
+      function captureState() {
+        return {
+          position: [round4(camera.position.x), round4(camera.position.y), round4(camera.position.z)],
+          target: [round4(target.x), round4(target.y), round4(target.z)]
+        };
+      }
+
+      function applyState(state) {
+        if (!state || !state.position || !state.target || state.position.length !== 3 || state.target.length !== 3) {
+          return;
+        }
+
+        camera.position.set(state.position[0], state.position[1], state.position[2]);
+        target.set(state.target[0], state.target[1], state.target[2]);
+        syncFromCamera();
+        applyCamera();
+      }
+
       syncFromCamera();
       applyCamera();
 
@@ -813,6 +950,8 @@ public static class GraphViewHtmlBuilder
         syncFromCamera,
         focus,
         fitToPoints,
+        captureState,
+        applyState,
         update: function() { }
       };
     }
