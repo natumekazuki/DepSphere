@@ -86,3 +86,17 @@ pwsh -File .\scripts\windows\build-installer.ps1 `
 - バージョン規則:
   - タグビルド（`v1.2.3` / `1.2.3`）: タグ値を使用
   - それ以外（push/PR）: `0.1.<run_number>`
+
+## 10. Release自動公開（GitHub Releases）
+- Workflow: `.github/workflows/release-installer.yml`
+- トリガー:
+  - `push tags: v*`（例: `v1.2.3`）
+  - `workflow_dispatch`（`version` 手動指定可）
+- 実行内容:
+  - バージョン解決（`x.y.z`）
+  - Inno Setup インストーラー生成
+  - Artifact 保存（`DepSphere-setup-<version>`）
+  - GitHub Release 作成/更新 + インストーラー添付
+- 運用ルール:
+  - 通常リリースは `vX.Y.Z` タグを push して発行する。
+  - 手動実行時は `version=x.y.z` を指定すると `vx.y.z` タグ名で公開する。

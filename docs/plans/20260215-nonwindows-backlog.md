@@ -48,3 +48,4 @@
 - 2026-02-15: P3-1完了。`windows-ci` workflow を追加し、Windows上で restore/build/test と WPF最小起動スモークを実行可能化。
 - 2026-02-15: P3-2完了。`dep-visualizer-core` にWPF操作仕様の受け入れチェックリスト（AC-WPF-01〜10）を追加。
 - 2026-02-15: `windows-ci` を拡張し、Inno Setup によるインストーラー生成と artifact 保存を追加。
+- 2026-02-15: `release-installer` workflow を追加し、タグ起点で GitHub Release へインストーラーを自動公開可能化。
