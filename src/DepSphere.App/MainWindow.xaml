@@ -59,10 +59,6 @@
 
           <TextBlock Text="選択ノード" FontWeight="SemiBold" />
           <TextBlock x:Name="SelectedNodeText" Margin="0,6,0,0" Text="(未選択)" TextWrapping="Wrap" />
-          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-            <Button x:Name="CodeHistoryBackButton" Content="コード戻る" Click="OnCodeHistoryBackClick" IsEnabled="False" />
-            <Button x:Name="CodeHistoryForwardButton" Content="コード進む" Click="OnCodeHistoryForwardClick" IsEnabled="False" />
-          </StackPanel>
 
           <Separator Margin="0,14,0,14" />
 
@@ -105,7 +101,21 @@
                     ShowsPreview="True" />
 
       <Border Grid.Column="4" Background="#020617" CornerRadius="14" BorderBrush="#1E293B" BorderThickness="1" ClipToBounds="True">
-        <wv2:WebView2 x:Name="CodeWebView" />
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <wv2:WebView2 x:Name="CodeWebView" Grid.Row="0" />
+
+          <Border Grid.Row="1" Background="#0B1220" BorderBrush="#1E293B" BorderThickness="0,1,0,0" Padding="10,8">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="CodeHistoryBackButton" Content="コード戻る" Click="OnCodeHistoryBackClick" IsEnabled="False" />
+              <Button x:Name="CodeHistoryForwardButton" Content="コード進む" Click="OnCodeHistoryForwardClick" IsEnabled="False" />
+            </StackPanel>
+          </Border>
+        </Grid>
       </Border>
     </Grid>
   </Grid>

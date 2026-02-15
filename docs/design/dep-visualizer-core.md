@@ -200,9 +200,9 @@ sequenceDiagram
 - ホストは `src/DepSphere.App` に分離し、`DepSphere.Analyzer` を参照して描画HTML/コードHTMLを受け取る。
 - UI構成:
   - 左ペイン: 操作・状態・選択ノード表示
-  - 左ペイン: コード遷移履歴（`コード戻る` / `コード進む`）
   - 中央ペイン: 3Dグラフ（`GraphViewHtmlBuilder`）
   - 右ペイン: コードビュー（`SourceCodeViewerHtmlBuilder` / Monaco ReadOnly）
+  - 右ペイン下部: コード遷移履歴（`コード戻る` / `コード進む`）
   - 左ペインはヘッダーのトグルボタンで表示/非表示を切替可能
   - 左-中央、中央-右の境界は `GridSplitter` で幅調整可能
 - イベント連携:
