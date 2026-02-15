@@ -26,9 +26,9 @@ public static class SourceCodeViewer
             return new SourceCodeDocument(node.Location.FilePath, 1, 1, string.Empty);
         }
 
-        var startLine = Math.Max(1, node.Location.StartLine - contextLines);
-        var endLine = Math.Min(lines.Length, node.Location.EndLine + contextLines);
-        var content = string.Join(Environment.NewLine, lines[(startLine - 1)..endLine]);
+        var startLine = Math.Clamp(node.Location.StartLine, 1, lines.Length);
+        var endLine = Math.Clamp(node.Location.EndLine, startLine, lines.Length);
+        var content = string.Join(Environment.NewLine, lines);
 
         return new SourceCodeDocument(node.Location.FilePath, startLine, endLine, content);
     }

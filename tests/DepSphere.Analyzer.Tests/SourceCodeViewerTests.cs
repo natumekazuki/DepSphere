@@ -13,9 +13,11 @@ public class SourceCodeViewerTests
         var doc = SourceCodeViewer.OpenNode(graph, "SampleFixture.Impl");
 
         Assert.EndsWith("FixtureTypes.cs", doc.FilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("namespace SampleFixture;", doc.Content, StringComparison.Ordinal);
+        Assert.Contains("public interface IService { }", doc.Content, StringComparison.Ordinal);
         Assert.Contains("class Impl", doc.Content, StringComparison.Ordinal);
-        Assert.True(doc.StartLine >= 1);
-        Assert.True(doc.EndLine >= doc.StartLine);
+        Assert.Equal(12, doc.StartLine);
+        Assert.Equal(23, doc.EndLine);
     }
 
     [Fact]

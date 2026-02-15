@@ -151,6 +151,7 @@ WeightScore =
 - ノードダブルクリック時に `SymbolLocation` を解決
 - 内蔵ビューアへ `DocumentPath + Range` を渡して表示
 - 内蔵ビューアは Monaco Editor ベースの ReadOnly 表示（行番号・C#シンタックスハイライト）を基本とする
+- コード表示は常に対象ファイル全体を描画し、選択ノードの `Range`（`StartLine`〜`EndLine`）をハイライトする
 - Monaco 初期化失敗時は `textarea` フォールバックで表示継続する
 - コードビュー内でシンボルをダブルクリックした場合、対応ノードへ `nodeSelected` を通知し、グラフ/コードを同期更新する
 
