@@ -211,3 +211,24 @@ sequenceDiagram
     - `kindStats`: `reference/inherit/implement` ごとの `count` と `density`
     - `density` は有向グラフ密度 `count / (nodeCount * (nodeCount - 1))` で算出（`nodeCount <= 1` は 0）
 - CLIは進捗ステージ（`prepare/load/compile/metrics/complete`）を標準出力へ表示する。
+
+## 15. WPF操作仕様 受け入れチェックリスト
+### 15.1 前提条件
+- 対象環境: Windows 10/11（x64）
+- 検証ビルド: `src/DepSphere.App` の Release ビルド
+- 入力データ: `.sln` / `.csproj` の実在パス（例: `tests/DepSphere.Analyzer.Tests/Fixtures/SampleWorkspace.sln`）
+
+### 15.2 チェック項目
+- [ ] AC-WPF-01: アプリ起動時にクラッシュせず、左/中央/右の3ペインUIが表示される。
+- [ ] AC-WPF-02: 起動後にサンプル解析が実行され、中央にグラフ、右に初期メッセージが表示される。
+- [ ] AC-WPF-03: `参照` ボタンで `.sln` / `.csproj` を選択でき、選択結果が `ProjectPathTextBox` に反映される。
+- [ ] AC-WPF-04: `解析実行` 押下で解析が開始し、入力系UI（参照/解析実行/再解析/入力欄）が無効化される。
+- [ ] AC-WPF-05: 解析中の状態表示が `prepare -> load -> compile -> metrics -> complete` の順に更新される。
+- [ ] AC-WPF-06: `キャンセル` 押下で解析が停止し、状態表示が `解析をキャンセルしました。` になる。
+- [ ] AC-WPF-07: `進捗更新間隔` に数値以外または範囲外（1未満/10000超）を入力した場合、検証エラーが表示される。
+- [ ] AC-WPF-08: 中央グラフでノード選択時に右ペインのコード表示が対象ノード内容へ更新される。
+- [ ] AC-WPF-09: `SourceLocation` を持たないノード選択時、右ペインにフォールバック情報（メトリクス）が表示される。
+- [ ] AC-WPF-10: `再解析` 押下で直近の解析パスを再実行でき、未指定時はサンプル解析にフォールバックする。
+
+### 15.3 判定
+- 上記10項目がすべて満たされることを受け入れ条件とする。

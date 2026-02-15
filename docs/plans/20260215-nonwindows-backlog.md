@@ -15,7 +15,7 @@
 - [x] P2: Realtime更新ロジックの差分適用テストを追加し、過剰再解析を検出できるようにする。
 - [x] P2: 依存エッジ種別ごとの統計（件数・密度）を出力し、ホットスポット判断の補助情報を追加する。
 - [x] P3: CIにWindowsジョブを追加し、WPFビルド/最小起動確認を自動化する（ローカルWindows不要化）。
-- [ ] P3: WPF操作仕様の最終受け入れ項目を `docs/design/dep-visualizer-core.md` にチェックリスト化する。
+- [x] P3: WPF操作仕様の最終受け入れ項目を `docs/design/dep-visualizer-core.md` にチェックリスト化する。
 
 ## Deliverables
 - `src/DepSphere.Analyzer` の設定拡張とCLI利用導線
@@ -46,3 +46,4 @@
 - 2026-02-15: P2-2完了。Realtime差分適用テスト（無関係ノード非波及、DocumentRemoved、単一ファイル変更）を追加し、過剰更新の検出観点を拡張。
 - 2026-02-15: P2-3完了。依存エッジ種別ごとの件数・密度を `edge-stats.json` とCLI標準出力で確認可能化。
 - 2026-02-15: P3-1完了。`windows-ci` workflow を追加し、Windows上で restore/build/test と WPF最小起動スモークを実行可能化。
+- 2026-02-15: P3-2完了。`dep-visualizer-core` にWPF操作仕様の受け入れチェックリスト（AC-WPF-01〜10）を追加。
