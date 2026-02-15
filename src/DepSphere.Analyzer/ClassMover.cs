@@ -12,6 +12,56 @@ public static class ClassMover
         string targetNamespace,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(targetNamespace))
+        {
+            throw new ArgumentException("Target namespace is required.", nameof(targetNamespace));
+        }
+
+        var context = await LoadTypeContextAsync(csprojPath, typeFqn, cancellationToken);
+        await RemoveTypeFromSourceAsync(context, cancellationToken);
+
+        var targetFilePath = Path.Combine(Path.GetDirectoryName(context.SourceFilePath)!, context.TypeName + ".cs");
+        var movedSource = BuildMovedSource(context.SourceNamespace, targetNamespace, context.TypeDeclaration);
+
+        await WriteMovedFileAsync(targetFilePath, movedSource, cancellationToken);
+        return new MoveNamespaceResult(context.SourceFilePath, targetFilePath);
+    }
+
+    public static async Task<MoveFileResult> MoveFileAsync(
+        string csprojPath,
+        string typeFqn,
+        string targetFilePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(targetFilePath))
+        {
+            throw new ArgumentException("Target file path is required.", nameof(targetFilePath));
+        }
+
+        var context = await LoadTypeContextAsync(csprojPath, typeFqn, cancellationToken);
+        var resolvedTargetFilePath = ResolveTargetFilePath(csprojPath, targetFilePath);
+
+        if (string.Equals(
+                Path.GetFullPath(context.SourceFilePath),
+                Path.GetFullPath(resolvedTargetFilePath),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Target file path must differ from source file path.");
+        }
+
+        await RemoveTypeFromSourceAsync(context, cancellationToken);
+
+        var movedSource = BuildMovedSource(context.SourceNamespace, context.SourceNamespace, context.TypeDeclaration);
+        await WriteMovedFileAsync(resolvedTargetFilePath, movedSource, cancellationToken);
+
+        return new MoveFileResult(context.SourceFilePath, resolvedTargetFilePath);
+    }
+
+    private static async Task<TypeDeclarationContext> LoadTypeContextAsync(
+        string csprojPath,
+        string typeFqn,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(csprojPath))
         {
             throw new ArgumentException("Project path is required.", nameof(csprojPath));
@@ -20,11 +70,6 @@ public static class ClassMover
         if (string.IsNullOrWhiteSpace(typeFqn))
         {
             throw new ArgumentException("Type FQN is required.", nameof(typeFqn));
-        }
-
-        if (string.IsNullOrWhiteSpace(targetNamespace))
-        {
-            throw new ArgumentException("Target namespace is required.", nameof(targetNamespace));
         }
 
         var graph = await DependencyAnalyzer.AnalyzePathAsync(csprojPath, cancellationToken);
@@ -47,19 +92,47 @@ public static class ClassMover
             .FirstOrDefault(type => GetTypeFqn(type) == typeFqn)
             ?? throw new InvalidOperationException($"Type declaration not found in syntax tree: {typeFqn}");
 
-        var updatedRoot = root.RemoveNode(targetType, SyntaxRemoveOptions.KeepNoTrivia)
+        return new TypeDeclarationContext(
+            sourceFilePath,
+            GetNamespace(typeFqn),
+            GetTypeName(typeFqn),
+            root,
+            targetType);
+    }
+
+    private static async Task RemoveTypeFromSourceAsync(TypeDeclarationContext context, CancellationToken cancellationToken)
+    {
+        var updatedRoot = context.Root.RemoveNode(context.TypeDeclaration, SyntaxRemoveOptions.KeepNoTrivia)
             ?? throw new InvalidOperationException("Failed to remove target type from source file.");
 
-        await File.WriteAllTextAsync(sourceFilePath, updatedRoot.NormalizeWhitespace().ToFullString(), cancellationToken);
+        await File.WriteAllTextAsync(
+            context.SourceFilePath,
+            updatedRoot.NormalizeWhitespace().ToFullString(),
+            cancellationToken);
+    }
 
-        var sourceNamespace = GetNamespace(typeFqn);
-        var typeName = GetTypeName(typeFqn);
-        var targetFilePath = Path.Combine(Path.GetDirectoryName(sourceFilePath)!, typeName + ".cs");
+    private static async Task WriteMovedFileAsync(string targetFilePath, string movedSource, CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(targetFilePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
 
-        var movedSource = BuildMovedSource(sourceNamespace, targetNamespace, targetType);
         await File.WriteAllTextAsync(targetFilePath, movedSource, cancellationToken);
+    }
 
-        return new MoveNamespaceResult(sourceFilePath, targetFilePath);
+    private static string ResolveTargetFilePath(string csprojPath, string targetFilePath)
+    {
+        if (Path.IsPathRooted(targetFilePath))
+        {
+            return targetFilePath;
+        }
+
+        var projectDirectory = Path.GetDirectoryName(csprojPath)
+            ?? throw new InvalidOperationException($"Project directory is invalid: {csprojPath}");
+
+        return Path.Combine(projectDirectory, targetFilePath);
     }
 
     private static string BuildMovedSource(string sourceNamespace, string targetNamespace, TypeDeclarationSyntax movedType)
@@ -101,4 +174,11 @@ public static class ClassMover
         var lastDot = typeFqn.LastIndexOf('.');
         return lastDot > 0 ? typeFqn[(lastDot + 1)..] : typeFqn;
     }
+
+    private sealed record TypeDeclarationContext(
+        string SourceFilePath,
+        string SourceNamespace,
+        string TypeName,
+        CompilationUnitSyntax Root,
+        TypeDeclarationSyntax TypeDeclaration);
 }

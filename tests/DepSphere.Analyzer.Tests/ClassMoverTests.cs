@@ -33,6 +33,39 @@ public class ClassMoverTests
         Assert.Contains(graph.Nodes, node => node.Id == "Moved.Space.Impl");
     }
 
+    [Fact]
+    public async Task ファイル移動で指定パスへクラスを移せる()
+    {
+        var workspaceRoot = CopyFixtureToTemp();
+        var csprojPath = Path.Combine(workspaceRoot, "SampleLib", "SampleLib.csproj");
+        var relativePath = Path.Combine("Moved", "ImplMoved.cs");
+
+        var result = await ClassMover.MoveFileAsync(csprojPath, "SampleFixture.Impl", relativePath);
+
+        Assert.True(File.Exists(result.TargetFilePath));
+        var movedContent = await File.ReadAllTextAsync(result.TargetFilePath);
+        Assert.Contains("namespace SampleFixture;", movedContent, StringComparison.Ordinal);
+        Assert.Contains("class Impl", movedContent, StringComparison.Ordinal);
+
+        var originalContent = await File.ReadAllTextAsync(result.SourceFilePath);
+        Assert.DoesNotContain("class Impl", originalContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ファイル移動後に再解析結果が新ファイルを指す()
+    {
+        var workspaceRoot = CopyFixtureToTemp();
+        var csprojPath = Path.Combine(workspaceRoot, "SampleLib", "SampleLib.csproj");
+        var relativePath = Path.Combine("Moved", "ImplMoved.cs");
+
+        var result = await ClassMover.MoveFileAsync(csprojPath, "SampleFixture.Impl", relativePath);
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(csprojPath);
+
+        var movedNode = Assert.Single(graph.Nodes.Where(node => node.Id == "SampleFixture.Impl"));
+        Assert.NotNull(movedNode.Location);
+        Assert.Equal(result.TargetFilePath, movedNode.Location!.FilePath);
+    }
+
     private static string CopyFixtureToTemp()
     {
         var fixtureRoot = GetFixturePath();
