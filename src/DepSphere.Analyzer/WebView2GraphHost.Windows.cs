@@ -47,5 +47,12 @@ public sealed class WebView2GraphHost
             onSelected(message.NodeId);
         };
     }
+
+    public async Task FocusNodeAsync(string nodeId, CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken);
+        var script = GraphViewScriptCommandBuilder.BuildFocusNodeScript(nodeId);
+        await _webView.CoreWebView2.ExecuteScriptAsync(script);
+    }
 }
 #endif

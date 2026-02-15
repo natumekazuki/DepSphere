@@ -69,6 +69,11 @@ public static class GraphViewHtmlBuilder
       nodeMap.set(node.id, mesh);
     });
 
+    const defaultScales = new Map();
+    nodeMeshes.forEach((mesh) => {
+      defaultScales.set(mesh.userData.nodeId, mesh.scale.clone());
+    });
+
     edges.forEach((edge) => {
       const from = nodeMap.get(edge.from);
       const to = nodeMap.get(edge.to);
@@ -93,6 +98,23 @@ public static class GraphViewHtmlBuilder
         window.__depSphereHost.onNodeSelected(nodeId);
       }
     }
+
+    window.depSphereFocusNode = function(nodeId) {
+      const target = nodeMap.get(nodeId);
+      if (!target) return;
+
+      nodeMeshes.forEach((mesh) => {
+        const baseScale = defaultScales.get(mesh.userData.nodeId);
+        if (baseScale) {
+          mesh.scale.copy(baseScale);
+        }
+      });
+
+      target.scale.setScalar(1.6);
+      const desired = target.position.clone().add(new THREE.Vector3(0, 0, 40));
+      camera.position.lerp(desired, 0.45);
+      camera.lookAt(target.position);
+    };
 
     canvas.addEventListener('click', (event) => {
       const rect = canvas.getBoundingClientRect();

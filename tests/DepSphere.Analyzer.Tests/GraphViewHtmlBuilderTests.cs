@@ -36,6 +36,16 @@ public class GraphViewHtmlBuilderTests
     }
 
     [Fact]
+    public void フォーカス操作スクリプトを含める()
+    {
+        var view = BuildSampleView();
+
+        var html = GraphViewHtmlBuilder.Build(view);
+
+        Assert.Contains("window.depSphereFocusNode", html);
+    }
+
+    [Fact]
     public void WebViewメッセージを解析できる()
     {
         var raw = "{\"type\":\"nodeSelected\",\"nodeId\":\"Sample.Impl\"}";
@@ -46,6 +56,15 @@ public class GraphViewHtmlBuilderTests
         Assert.NotNull(message);
         Assert.Equal("nodeSelected", message!.Type);
         Assert.Equal("Sample.Impl", message.NodeId);
+    }
+
+    [Fact]
+    public void フォーカスコマンドスクリプトを生成できる()
+    {
+        var script = GraphViewScriptCommandBuilder.BuildFocusNodeScript("Sample.Impl");
+
+        Assert.Contains("depSphereFocusNode", script);
+        Assert.Contains("Sample.Impl", script);
     }
 
     private static GraphView BuildSampleView()
