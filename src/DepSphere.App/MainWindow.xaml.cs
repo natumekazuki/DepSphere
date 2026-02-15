@@ -10,6 +10,8 @@ public partial class MainWindow : Window
 {
     private DependencyGraph? _currentGraph;
     private string? _currentAnalysisPath;
+    private CancellationTokenSource? _analysisCts;
+    private bool _isAnalyzing;
 
     public MainWindow()
     {
@@ -37,6 +39,12 @@ public partial class MainWindow : Window
 
     private async void OnLoadSampleClick(object sender, RoutedEventArgs e)
     {
+        if (_isAnalyzing)
+        {
+            StatusText.Text = "解析中はサンプル読込できません。";
+            return;
+        }
+
         _currentAnalysisPath = null;
         ProjectPathTextBox.Text = string.Empty;
         await LoadSampleAsync();
@@ -44,6 +52,12 @@ public partial class MainWindow : Window
 
     private async void OnReloadClick(object sender, RoutedEventArgs e)
     {
+        if (_isAnalyzing)
+        {
+            StatusText.Text = "解析中です。キャンセル後に再実行してください。";
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(_currentAnalysisPath))
         {
             await AnalyzeProjectAsync(_currentAnalysisPath);
@@ -55,6 +69,11 @@ public partial class MainWindow : Window
 
     private void OnBrowseProjectClick(object sender, RoutedEventArgs e)
     {
+        if (_isAnalyzing)
+        {
+            return;
+        }
+
         var dialog = new OpenFileDialog
         {
             Title = "解析対象を選択",
@@ -73,6 +92,12 @@ public partial class MainWindow : Window
 
     private async void OnAnalyzeClick(object sender, RoutedEventArgs e)
     {
+        if (_isAnalyzing)
+        {
+            StatusText.Text = "解析中です。キャンセル後に再実行してください。";
+            return;
+        }
+
         if (!TryGetValidProjectPath(ProjectPathTextBox.Text, out var path, out var errorMessage))
         {
             StatusText.Text = errorMessage ?? "解析対象が不正です。";
@@ -81,6 +106,19 @@ public partial class MainWindow : Window
 
         _currentAnalysisPath = path;
         await AnalyzeProjectAsync(path);
+    }
+
+    private void OnCancelClick(object sender, RoutedEventArgs e)
+    {
+        if (!_isAnalyzing || _analysisCts is null)
+        {
+            StatusText.Text = "実行中の解析はありません。";
+            return;
+        }
+
+        CancelButton.IsEnabled = false;
+        StatusText.Text = "キャンセル要求を送信しました...";
+        _analysisCts.Cancel();
     }
 
     private async Task LoadSampleAsync()
@@ -121,16 +159,37 @@ public partial class MainWindow : Window
 
     private async Task AnalyzeProjectAsync(string path)
     {
+        if (_isAnalyzing)
+        {
+            return;
+        }
+
+        using var cts = new CancellationTokenSource();
+        _analysisCts = cts;
+        SetAnalysisState(isAnalyzing: true, canCancel: true);
         StatusText.Text = "解析中...";
 
         try
         {
-            var graph = await DependencyAnalyzer.AnalyzePathAsync(path);
+            var graph = await DependencyAnalyzer.AnalyzePathAsync(path, cts.Token);
             RenderGraph(graph, $"解析完了: {Path.GetFileName(path)}");
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "解析をキャンセルしました。";
         }
         catch (Exception ex)
         {
             StatusText.Text = "解析失敗: " + ex.Message;
+        }
+        finally
+        {
+            if (ReferenceEquals(_analysisCts, cts))
+            {
+                _analysisCts = null;
+            }
+
+            SetAnalysisState(isAnalyzing: false, canCancel: false);
         }
     }
 
@@ -183,6 +242,17 @@ public partial class MainWindow : Window
 
         path = trimmed;
         return true;
+    }
+
+    private void SetAnalysisState(bool isAnalyzing, bool canCancel)
+    {
+        _isAnalyzing = isAnalyzing;
+        LoadSampleButton.IsEnabled = !isAnalyzing;
+        ReloadButton.IsEnabled = !isAnalyzing;
+        BrowseProjectButton.IsEnabled = !isAnalyzing;
+        AnalyzeButton.IsEnabled = !isAnalyzing;
+        ProjectPathTextBox.IsEnabled = !isAnalyzing;
+        CancelButton.IsEnabled = isAnalyzing && canCancel;
     }
 
     private void OnGraphMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)

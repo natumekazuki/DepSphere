@@ -22,8 +22,9 @@
           <TextBlock Text="  /  WPF Host Preview" FontSize="13" Foreground="{StaticResource BrushMuted}" VerticalAlignment="Bottom" Margin="8,0,0,1" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-          <Button Content="サンプル読込" Click="OnLoadSampleClick" />
-          <Button Content="再解析" Click="OnReloadClick" />
+          <Button x:Name="LoadSampleButton" Content="サンプル読込" Click="OnLoadSampleClick" />
+          <Button x:Name="ReloadButton" Content="再解析" Click="OnReloadClick" />
+          <Button x:Name="CancelButton" Content="キャンセル" Click="OnCancelClick" IsEnabled="False" />
         </StackPanel>
       </Grid>
     </Border>
@@ -47,8 +48,8 @@
           <TextBlock Text="解析対象" FontWeight="SemiBold" />
           <TextBox x:Name="ProjectPathTextBox" Margin="0,6,0,0" TextWrapping="Wrap" />
           <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-            <Button Content="参照" Click="OnBrowseProjectClick" />
-            <Button Content="解析実行" Click="OnAnalyzeClick" />
+            <Button x:Name="BrowseProjectButton" Content="参照" Click="OnBrowseProjectClick" />
+            <Button x:Name="AnalyzeButton" Content="解析実行" Click="OnAnalyzeClick" />
           </StackPanel>
 
           <Separator Margin="0,14,0,14" />
