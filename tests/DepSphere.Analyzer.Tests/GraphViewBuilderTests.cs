@@ -48,6 +48,69 @@ public class GraphViewBuilderTests
     }
 
     [Fact]
+    public void ノードラベルは型の単純名になる()
+    {
+        var graph = new DependencyGraph(
+            new[]
+            {
+                new DependencyNode(
+                    "Sample.Outer.Inner",
+                    new TypeMetrics(1, 1, 1, 1, 1, 1, 0.5))
+            },
+            Array.Empty<DependencyEdge>());
+
+        var view = GraphViewBuilder.Build(graph);
+
+        Assert.Single(view.Nodes);
+        Assert.Equal("Inner", view.Nodes[0].Label);
+    }
+
+    [Fact]
+    public void ノード情報にメソッド名一覧を含める()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"depsphere-methods-{Guid.NewGuid():N}.cs");
+        File.WriteAllText(
+            tempFile,
+            """
+            namespace Sample;
+
+            public class Impl
+            {
+                public Impl() { }
+                public void Execute() { }
+                private int Compute() => 1;
+            }
+            """);
+
+        try
+        {
+            var graph = new DependencyGraph(
+                new[]
+                {
+                    new DependencyNode(
+                        "Sample.Impl",
+                        new TypeMetrics(1, 1, 1, 1, 1, 1, 0.5))
+                    {
+                        Location = new SourceLocation(tempFile, 3, 1, 8, 2)
+                    }
+                },
+                Array.Empty<DependencyEdge>());
+
+            var view = GraphViewBuilder.Build(graph);
+
+            Assert.Single(view.Nodes);
+            Assert.Equal(new[] { "Compute", "Execute", "Impl" }, view.Nodes[0].MethodNames);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+            {
+                File.Delete(tempFile);
+            }
+        }
+    }
+
+    [Fact]
     public void 三次元表示用グラフをJSONへ変換できる()
     {
         var graph = DependencyAnalyzer.Analyze(new[] { Source });

@@ -21,57 +21,153 @@ public static class GraphViewHtmlBuilder
     #dep-graph-canvas { width: 100vw; height: 100vh; display: block; }
     #overlay {
       position: fixed; top: 12px; left: 12px; color: #e2e8f0;
-      background: rgba(15, 23, 42, 0.7); padding: 8px 12px; border-radius: 8px;
+      background: rgba(15, 23, 42, 0.82); padding: 10px 12px; border-radius: 10px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      min-width: 240px;
     }
+    #overlay h1 {
+      margin: 0 0 8px 0; font-size: 13px; font-weight: 600;
+    }
+    #overlay .control { margin-top: 8px; }
+    #overlay label { display: block; margin-bottom: 2px; color: #cbd5e1; }
+    #overlay input[type='range'] { width: 100%; }
+    #node-info {
+      position: fixed; right: 12px; top: 12px; color: #e2e8f0;
+      background: rgba(2, 6, 23, 0.82); padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+      max-width: 340px;
+      white-space: pre-wrap;
+    }
+    #node-info .title { font-weight: 600; margin-bottom: 6px; }
   </style>
 </head>
 <body>
   <canvas id="dep-graph-canvas"></canvas>
-  <div id="overlay">DepSphere 3D Graph</div>
+  <div id="overlay">
+    <h1>DepSphere 3D Graph</h1>
+    <div>左クリック: ノード選択</div>
+    <div>右ドラッグ: 回転 / 左ドラッグ: 平行移動 / ホイール: ズーム</div>
+    <div class="control">
+      <label for="node-scale">ノード倍率</label>
+      <input id="node-scale" type="range" min="0.6" max="2.4" step="0.1" value="1.0" />
+    </div>
+    <div class="control">
+      <label for="spread-scale">距離倍率</label>
+      <input id="spread-scale" type="range" min="0.6" max="2.6" step="0.1" value="1.0" />
+    </div>
+  </div>
+  <div id="node-info">
+    <div class="title">ノード情報</div>
+    <div id="node-info-body">ノードをクリックするとクラス名とメソッド名を表示します。</div>
+  </div>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
   <script>
     window.__depSphereGraph = JSON.parse(atob("{{base64}}"));
 
     const canvas = document.getElementById('dep-graph-canvas');
+    const infoBody = document.getElementById('node-info-body');
+    const nodeScaleInput = document.getElementById('node-scale');
+    const spreadScaleInput = document.getElementById('spread-scale');
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1220);
 
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
-    camera.position.set(0, 0, 160);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2600);
+    camera.position.set(0, 0, 200);
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(window.innerWidth, window.innerHeight);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.75);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.screenSpacePanning = true;
+    controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+    controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+    controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+
+    canvas.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+    });
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.78);
     scene.add(ambient);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.55);
+    keyLight.position.set(80, 120, 140);
+    scene.add(keyLight);
 
     const nodes = window.__depSphereGraph.nodes || [];
     const edges = window.__depSphereGraph.edges || [];
 
     const nodeMeshes = [];
     const nodeMap = new Map();
+    const basePositions = new Map();
+    const edgeLines = [];
+    let selectedNodeId = null;
 
     function hexColor(color) {
       if (!color || !color.startsWith('#')) return 0x3b82f6;
       return parseInt(color.slice(1), 16);
     }
 
+    function createTextSprite(text) {
+      const fontSize = 36;
+      const pad = 14;
+      const canvasEl = document.createElement('canvas');
+      const ctx = canvasEl.getContext('2d');
+      ctx.font = `600 ${fontSize}px sans-serif`;
+      const textWidth = Math.max(30, Math.ceil(ctx.measureText(text).width));
+      canvasEl.width = textWidth + pad * 2;
+      canvasEl.height = fontSize + pad * 2;
+
+      ctx.font = `600 ${fontSize}px sans-serif`;
+      ctx.fillStyle = 'rgba(11, 18, 32, 0.70)';
+      ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText(text, pad, fontSize + 4);
+
+      const texture = new THREE.CanvasTexture(canvasEl);
+      texture.needsUpdate = true;
+
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false
+      });
+
+      const sprite = new THREE.Sprite(material);
+      const sx = canvasEl.width / 14;
+      const sy = canvasEl.height / 14;
+      sprite.scale.set(sx, sy, 1);
+      sprite.userData.baseScale = new THREE.Vector3(sx, sy, 1);
+      sprite.renderOrder = 10;
+      return sprite;
+    }
+
     nodes.forEach((node) => {
-      const geometry = new THREE.SphereGeometry(Math.max(2, node.size * 0.15), 16, 16);
+      const baseRadius = Math.max(2, node.size * 0.15);
+      const geometry = new THREE.SphereGeometry(baseRadius, 16, 16);
       const material = new THREE.MeshStandardMaterial({ color: hexColor(node.color) });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(node.x || 0, node.y || 0, node.z || 0);
       mesh.userData.nodeId = node.id;
+      mesh.userData.node = node;
+      mesh.userData.baseRadius = baseRadius;
+
+      const label = createTextSprite(node.label || node.id);
+      label.position.set(0, baseRadius + 5, 0);
+      mesh.add(label);
+      mesh.userData.labelSprite = label;
+
       scene.add(mesh);
       nodeMeshes.push(mesh);
       nodeMap.set(node.id, mesh);
-    });
-
-    const defaultScales = new Map();
-    nodeMeshes.forEach((mesh) => {
-      defaultScales.set(mesh.userData.nodeId, mesh.scale.clone());
+      basePositions.set(node.id, mesh.position.clone());
     });
 
     edges.forEach((edge) => {
@@ -81,13 +177,35 @@ public static class GraphViewHtmlBuilder
 
       const points = [from.position.clone(), to.position.clone()];
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const material = new THREE.LineBasicMaterial({ color: hexColor(edge.color), opacity: 0.7, transparent: true });
+      const material = new THREE.LineBasicMaterial({ color: hexColor(edge.color), opacity: 0.68, transparent: true });
       const line = new THREE.Line(geometry, material);
       scene.add(line);
+      edgeLines.push({ from: edge.from, to: edge.to, line });
     });
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+
+    let pointerDown = null;
+    let pointerMoved = false;
+
+    canvas.addEventListener('pointerdown', (event) => {
+      pointerDown = { x: event.clientX, y: event.clientY, button: event.button };
+      pointerMoved = false;
+    });
+
+    canvas.addEventListener('pointermove', (event) => {
+      if (!pointerDown) return;
+      const dx = event.clientX - pointerDown.x;
+      const dy = event.clientY - pointerDown.y;
+      if ((dx * dx + dy * dy) > 25) {
+        pointerMoved = true;
+      }
+    });
+
+    canvas.addEventListener('pointerup', () => {
+      pointerDown = null;
+    });
 
     function postNodeSelected(nodeId) {
       const payload = { type: 'nodeSelected', nodeId: nodeId };
@@ -99,35 +217,96 @@ public static class GraphViewHtmlBuilder
       }
     }
 
+    function updateNodeInfo(node) {
+      if (!node) {
+        infoBody.textContent = 'ノードをクリックするとクラス名とメソッド名を表示します。';
+        return;
+      }
+
+      const methods = Array.isArray(node.methodNames) ? node.methodNames : [];
+      const methodText = methods.length > 0
+        ? methods.join('\n')
+        : '(メソッド情報なし)';
+
+      infoBody.textContent =
+        `Class: ${node.id}\n` +
+        `Label: ${node.label || node.id}\n` +
+        `Methods:\n${methodText}`;
+    }
+
+    function refreshEdges() {
+      edgeLines.forEach((item) => {
+        const from = nodeMap.get(item.from);
+        const to = nodeMap.get(item.to);
+        if (!from || !to) return;
+
+        item.line.geometry.setFromPoints([from.position.clone(), to.position.clone()]);
+      });
+    }
+
+    function applyVisualSettings() {
+      const nodeScale = Number(nodeScaleInput.value || '1');
+      const spreadScale = Number(spreadScaleInput.value || '1');
+
+      nodeMeshes.forEach((mesh) => {
+        const id = mesh.userData.nodeId;
+        const basePos = basePositions.get(id);
+        if (basePos) {
+          mesh.position.copy(basePos).multiplyScalar(spreadScale);
+        }
+
+        const selected = selectedNodeId === id;
+        const scale = (selected ? 1.6 : 1.0) * nodeScale;
+        mesh.scale.setScalar(scale);
+
+        const label = mesh.userData.labelSprite;
+        if (label && label.userData.baseScale) {
+          const bs = label.userData.baseScale;
+          label.scale.set(bs.x * nodeScale, bs.y * nodeScale, 1);
+        }
+      });
+
+      refreshEdges();
+    }
+
     window.depSphereFocusNode = function(nodeId) {
       const target = nodeMap.get(nodeId);
       if (!target) return;
 
-      nodeMeshes.forEach((mesh) => {
-        const baseScale = defaultScales.get(mesh.userData.nodeId);
-        if (baseScale) {
-          mesh.scale.copy(baseScale);
-        }
-      });
+      selectedNodeId = nodeId;
+      applyVisualSettings();
 
-      target.scale.setScalar(1.6);
-      const desired = target.position.clone().add(new THREE.Vector3(0, 0, 40));
-      camera.position.lerp(desired, 0.45);
-      camera.lookAt(target.position);
+      controls.target.copy(target.position);
+      const desired = target.position.clone().add(new THREE.Vector3(0, 0, 52));
+      camera.position.copy(desired);
+      updateNodeInfo(target.userData.node);
     };
 
     canvas.addEventListener('click', (event) => {
+      if (pointerMoved) {
+        return;
+      }
+
       const rect = canvas.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
 
       const hits = raycaster.intersectObjects(nodeMeshes, false);
-      if (hits.length > 0) {
-        const selectedId = hits[0].object.userData.nodeId;
-        postNodeSelected(selectedId);
+      if (hits.length === 0) {
+        return;
       }
+
+      const selected = hits[0].object;
+      const selectedId = selected.userData.nodeId;
+      selectedNodeId = selectedId;
+      applyVisualSettings();
+      updateNodeInfo(selected.userData.node);
+      postNodeSelected(selectedId);
     });
+
+    nodeScaleInput.addEventListener('input', applyVisualSettings);
+    spreadScaleInput.addEventListener('input', applyVisualSettings);
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -135,9 +314,11 @@ public static class GraphViewHtmlBuilder
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    applyVisualSettings();
+
     function animate() {
       requestAnimationFrame(animate);
-      scene.rotation.y += 0.0015;
+      controls.update();
       renderer.render(scene, camera);
     }
 

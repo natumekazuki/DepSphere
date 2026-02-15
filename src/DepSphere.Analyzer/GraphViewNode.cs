@@ -9,4 +9,7 @@ public sealed record GraphViewNode(
     double Size,
     string Color,
     string Level,
-    TypeMetrics Metrics);
+    TypeMetrics Metrics)
+{
+    public IReadOnlyList<string> MethodNames { get; init; } = Array.Empty<string>();
+}

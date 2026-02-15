@@ -36,6 +36,33 @@ public class GraphViewHtmlBuilderTests
     }
 
     [Fact]
+    public void グラフ操作とスケール調整UIを含める()
+    {
+        var view = BuildSampleView();
+
+        var html = GraphViewHtmlBuilder.Build(view);
+
+        Assert.Contains("OrbitControls.js", html);
+        Assert.Contains("controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;", html);
+        Assert.Contains("controls.mouseButtons.LEFT = THREE.MOUSE.PAN;", html);
+        Assert.Contains("node-scale", html);
+        Assert.Contains("spread-scale", html);
+        Assert.DoesNotContain("scene.rotation.y +=", html);
+    }
+
+    [Fact]
+    public void ノード情報パネルにメソッド名表示ロジックを含める()
+    {
+        var view = BuildSampleView();
+
+        var html = GraphViewHtmlBuilder.Build(view);
+
+        Assert.Contains("node.methodNames", html);
+        Assert.Contains("Methods:", html);
+        Assert.Contains("node-info-body", html);
+    }
+
+    [Fact]
     public void フォーカス操作スクリプトを含める()
     {
         var view = BuildSampleView();
@@ -87,7 +114,7 @@ public class GraphViewHtmlBuilderTests
             {
                 new GraphViewNode(
                     "Sample.Impl",
-                    "Sample.Impl",
+                    "Impl",
                     0,
                     0,
                     0,
@@ -95,6 +122,9 @@ public class GraphViewHtmlBuilderTests
                     "#ef4444",
                     "critical",
                     new TypeMetrics(3, 20, 4, 6, 2, 1, 0.92))
+                {
+                    MethodNames = new[] { "Compute", "Execute", "Impl" }
+                }
             },
             new[]
             {
