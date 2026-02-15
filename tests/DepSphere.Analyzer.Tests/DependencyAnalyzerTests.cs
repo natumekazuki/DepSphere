@@ -114,6 +114,21 @@ public class DependencyAnalyzerTests
         Assert.Contains(progress.Items, item => item.Stage == "complete");
     }
 
+    [Fact]
+    public async Task 進捗更新間隔が不正なら例外になる()
+    {
+        var csprojPath = GetFixturePath("SampleLib", "SampleLib.csproj");
+        var options = new AnalysisOptions
+        {
+            MetricsProgressReportInterval = 0
+        };
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+        {
+            _ = await DependencyAnalyzer.AnalyzePathAsync(csprojPath, options, progress: null, cancellationToken: CancellationToken.None);
+        });
+    }
+
     private static string GetFixturePath(params string[] paths)
     {
         var root = FindRepoRoot();

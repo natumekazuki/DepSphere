@@ -30,12 +30,21 @@ public static class DependencyAnalyzer
 
     public static Task<DependencyGraph> AnalyzePathAsync(string path, CancellationToken cancellationToken = default)
     {
-        return AnalyzePathAsync(path, progress: null, cancellationToken);
+        return AnalyzePathAsync(path, options: null, progress: null, cancellationToken);
+    }
+
+    public static Task<DependencyGraph> AnalyzePathAsync(
+        string path,
+        IProgress<AnalysisProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return AnalyzePathAsync(path, options: null, progress, cancellationToken);
     }
 
     public static async Task<DependencyGraph> AnalyzePathAsync(
         string path,
-        IProgress<AnalysisProgress>? progress,
+        AnalysisOptions? options,
+        IProgress<AnalysisProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -47,6 +56,9 @@ public static class DependencyAnalyzer
         {
             throw new FileNotFoundException("Target file does not exist.", path);
         }
+
+        var effectiveOptions = options ?? new AnalysisOptions();
+        var metricsProgressReportInterval = effectiveOptions.ValidateMetricsProgressReportInterval();
 
         ReportProgress(progress, "prepare", "入力検証完了");
         EnsureMsBuildRegistered();
@@ -65,7 +77,7 @@ public static class DependencyAnalyzer
                 var solution = await workspace.OpenSolutionAsync(path, cancellationToken: cancellationToken);
                 var projects = solution.Projects.ToArray();
                 ReportProgress(progress, "load", "ソリューション読込完了", projects.Length, projects.Length);
-                var graph = await AnalyzeProjectsAsync(projects, progress, cancellationToken);
+                var graph = await AnalyzeProjectsAsync(projects, metricsProgressReportInterval, progress, cancellationToken);
                 ReportProgress(progress, "complete", "解析完了");
                 return graph;
             }
@@ -75,7 +87,7 @@ public static class DependencyAnalyzer
                 ReportProgress(progress, "load", "プロジェクトを読み込み中");
                 var project = await workspace.OpenProjectAsync(path, cancellationToken: cancellationToken);
                 ReportProgress(progress, "load", "プロジェクト読込完了", 1, 1);
-                var graph = await AnalyzeProjectsAsync(new[] { project }, progress, cancellationToken);
+                var graph = await AnalyzeProjectsAsync(new[] { project }, metricsProgressReportInterval, progress, cancellationToken);
                 ReportProgress(progress, "complete", "解析完了");
                 return graph;
             }
@@ -90,6 +102,7 @@ public static class DependencyAnalyzer
 
     private static async Task<DependencyGraph> AnalyzeProjectsAsync(
         IEnumerable<Project> projects,
+        int metricsProgressReportInterval,
         IProgress<AnalysisProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -110,11 +123,12 @@ public static class DependencyAnalyzer
         }
 
         ReportProgress(progress, "compile", "コンパイル作成完了", compilations.Count, total);
-        return AnalyzeCompilations(compilations, progress, cancellationToken);
+        return AnalyzeCompilations(compilations, metricsProgressReportInterval, progress, cancellationToken);
     }
 
     private static DependencyGraph AnalyzeCompilations(
         IEnumerable<Compilation> compilations,
+        int metricsProgressReportInterval = AnalysisOptions.DefaultMetricsProgressReportInterval,
         IProgress<AnalysisProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -131,7 +145,7 @@ public static class DependencyAnalyzer
         {
             cancellationToken.ThrowIfCancellationRequested();
             currentType++;
-            if (totalTypes > 0 && (currentType == 1 || currentType == totalTypes || currentType % 25 == 0))
+            if (totalTypes > 0 && (currentType == 1 || currentType == totalTypes || currentType % metricsProgressReportInterval == 0))
             {
                 ReportProgress(progress, "metrics", "メトリクス算出中", currentType, totalTypes);
             }

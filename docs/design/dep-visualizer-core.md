@@ -181,6 +181,7 @@ sequenceDiagram
   - 解析実行中は入力系ボタンを無効化し、多重実行を防止する。
   - `キャンセル` ボタンで `CancellationToken` を通知し、停止時は状態表示を `解析をキャンセルしました。` に更新する。
   - 解析中の状態表示は `prepare/load/compile/metrics/complete` ステージで段階更新する。
+  - `進捗更新間隔（型件数）` をUIで指定し、`metrics` ステージの更新頻度を調整可能にする。
 - ビルド方針:
   - `net8.0-windows10.0.19041.0` + `UseWPF=true`
   - 非Windows環境ビルドのため `EnableWindowsTargeting=true` を設定する。
