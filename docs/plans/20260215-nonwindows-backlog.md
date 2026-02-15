@@ -9,7 +9,7 @@
 
 ## Task List (Priority Order)
 - [ ] P1: Analyzerの重みスコアを設定化（係数/Hotspot閾値）し、比較実験しやすくする。
-- [ ] P1: Analyzerの出力をCLIで保存できる導線（JSON/HTML）を追加し、ホストなしでも確認可能にする。
+- [x] P1: Analyzerの出力をCLIで保存できる導線（JSON/HTML）を追加し、ホストなしでも確認可能にする。
 - [ ] P1: 解析性能ベンチ（中規模Fixture）を追加し、回帰基準（時間/ノード数）を定義する。
 - [ ] P2: クラス移動（namespace/file/project）の回帰テストケースを拡張し、壊れやすいパターンを網羅する。
 - [ ] P2: Realtime更新ロジックの差分適用テストを追加し、過剰再解析を検出できるようにする。
@@ -39,3 +39,4 @@
 
 ## Notes / Logs
 - 2026-02-15: Windows非依存で進める優先タスクの初版を作成。
+- 2026-02-15: P1-2完了。`src/DepSphere.Cli` を追加し、解析結果の JSON/HTML 保存導線を実装。

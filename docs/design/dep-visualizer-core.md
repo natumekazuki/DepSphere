@@ -185,3 +185,16 @@ sequenceDiagram
 - ビルド方針:
   - `net8.0-windows10.0.19041.0` + `UseWPF=true`
   - 非Windows環境ビルドのため `EnableWindowsTargeting=true` を設定する。
+
+## 14. CLI出力導線（Non-Windows向け）
+- `src/DepSphere.Cli` で `.sln/.csproj` を解析し、可視化成果物をファイル保存できるようにする。
+- 主な引数:
+  - `--input`: 解析対象（必須）
+  - `--out`: 出力ディレクトリ（既定: `artifacts/depsphere`）
+  - `--json`: JSON出力パス（既定: `graph.json`）
+  - `--html`: HTML出力パス（既定: `graph.html`）
+  - `--progress-interval`: 進捗更新間隔（型件数）
+- 出力:
+  - `GraphViewJsonSerializer` による `graph.json`
+  - `GraphViewHtmlBuilder` による `graph.html`
+- CLIは進捗ステージ（`prepare/load/compile/metrics/complete`）を標準出力へ表示する。
