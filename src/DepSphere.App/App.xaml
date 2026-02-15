@@ -20,13 +20,38 @@
       <Setter Property="FontFamily" Value="Segoe UI" />
     </Style>
 
-    <Style TargetType="Button">
+    <Style x:Key="BaseButtonStyle" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource BrushText}" />
       <Setter Property="Background" Value="#1E293B" />
       <Setter Property="BorderBrush" Value="#334155" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="10,6" />
       <Setter Property="Margin" Value="0,0,8,0" />
+      <Setter Property="Opacity" Value="1" />
+      <Style.Triggers>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="#A8B6CB" />
+          <Setter Property="Background" Value="#233144" />
+          <Setter Property="BorderBrush" Value="#3A4A62" />
+          <Setter Property="Opacity" Value="1" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}" />
+
+    <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+      <Setter Property="Foreground" Value="#FFE4E6" />
+      <Setter Property="Background" Value="#7F1D1D" />
+      <Setter Property="BorderBrush" Value="#BE123C" />
+      <Style.Triggers>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="#FECACA" />
+          <Setter Property="Background" Value="#4C1D1D" />
+          <Setter Property="BorderBrush" Value="#7F1D1D" />
+          <Setter Property="Opacity" Value="1" />
+        </Trigger>
+      </Style.Triggers>
     </Style>
   </Application.Resources>
 </Application>

@@ -25,7 +25,7 @@
           <Button x:Name="ToggleOperationsPanelButton" Content="操作パネルを隠す" Click="OnToggleOperationsPanelClick" />
           <Button x:Name="LoadSampleButton" Content="サンプル読込" Click="OnLoadSampleClick" />
           <Button x:Name="ReloadButton" Content="再解析" Click="OnReloadClick" />
-          <Button x:Name="CancelButton" Content="キャンセル" Click="OnCancelClick" IsEnabled="False" />
+          <Button x:Name="CancelButton" Content="キャンセル" Click="OnCancelClick" IsEnabled="False" Style="{StaticResource DangerButtonStyle}" />
         </StackPanel>
       </Grid>
     </Border>
@@ -59,6 +59,10 @@
 
           <TextBlock Text="選択ノード" FontWeight="SemiBold" />
           <TextBlock x:Name="SelectedNodeText" Margin="0,6,0,0" Text="(未選択)" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <Button x:Name="CodeHistoryBackButton" Content="コード戻る" Click="OnCodeHistoryBackClick" IsEnabled="False" />
+            <Button x:Name="CodeHistoryForwardButton" Content="コード進む" Click="OnCodeHistoryForwardClick" IsEnabled="False" />
+          </StackPanel>
 
           <Separator Margin="0,14,0,14" />
 

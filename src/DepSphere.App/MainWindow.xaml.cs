@@ -11,6 +11,7 @@ namespace DepSphere.App;
 
 public partial class MainWindow : Window
 {
+    private const int CodeNavigationHistoryLimit = 120;
     private DependencyGraph? _currentGraph;
     private string? _currentAnalysisPath;
     private CancellationTokenSource? _analysisCts;
@@ -20,6 +21,9 @@ public partial class MainWindow : Window
     private string? _lastErrorDetails;
     private bool _isOperationsPanelVisible = true;
     private GridLength _operationsPanelWidth = new(280);
+    private readonly List<string> _codeNavigationHistory = [];
+    private int _codeNavigationHistoryIndex = -1;
+    private bool _isNavigatingCodeHistory;
 
     public MainWindow()
     {
@@ -37,8 +41,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        await LoadSampleAsync();
-        SetStatusMessage("準備完了");
+        GraphWebView.NavigateToString(BuildInitialGraphViewHtml());
+        CodeWebView.NavigateToString(BuildInitialCodeViewHtml());
+        SelectedNodeText.Text = "(未選択)";
+        ResetCodeNavigationHistory();
+        SetStatusMessage("準備完了。解析対象を指定してください。");
     }
 
     private async void OnLoadSampleClick(object sender, RoutedEventArgs e)
@@ -84,7 +91,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await LoadSampleAsync();
+        SetStatusMessage("再解析対象がありません。解析対象を指定して実行してください。");
     }
 
     private void OnBrowseProjectClick(object sender, RoutedEventArgs e)
@@ -264,7 +271,50 @@ public partial class MainWindow : Window
         GraphWebView.NavigateToString(GraphViewHtmlBuilder.Build(view));
         CodeWebView.NavigateToString(BuildInitialCodeViewHtml());
         SelectedNodeText.Text = "(未選択)";
+        ResetCodeNavigationHistory();
         SetStatusMessage($"{statusPrefix} / ノード {view.Nodes.Count} / エッジ {view.Edges.Count}");
+    }
+
+    private static string BuildInitialGraphViewHtml()
+    {
+        return """
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DepSphere Graph Viewer</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #020617;
+      color: #cbd5e1;
+      font-family: "Segoe UI", sans-serif;
+    }
+    .empty {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div class="empty">
+    <div>
+      <h2>グラフはまだ表示されていません</h2>
+      <p>.sln または .csproj を指定して解析を実行してください。</p>
+    </div>
+  </div>
+</body>
+</html>
+""";
     }
 
     private static string BuildInitialCodeViewHtml()
@@ -274,7 +324,7 @@ public partial class MainWindow : Window
                 "(未選択)",
                 1,
                 1,
-                "ノードをクリックするとコードを表示します。"));
+                "ノードをダブルクリックするとコードを表示します。"));
         return initial;
     }
 
@@ -354,6 +404,7 @@ public partial class MainWindow : Window
         ProjectPathTextBox.IsEnabled = canInteract;
         ProgressIntervalTextBox.IsEnabled = canInteract;
         CancelButton.IsEnabled = _isWebViewInitialized && isAnalyzing && canCancel;
+        UpdateCodeNavigationButtonState();
     }
 
     private void OnGraphMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
@@ -388,30 +439,45 @@ public partial class MainWindow : Window
             return;
         }
 
-        SelectedNodeText.Text = message.NodeId;
+        OpenNodeInCodePane(message.NodeId, focusGraph, appendHistory: true);
+    }
 
-        if (GraphSelectionCoordinator.TryOpenFromMessage(_currentGraph, rawMessage, out var document) && document is not null)
+    private void OpenNodeInCodePane(string nodeId, bool focusGraph, bool appendHistory)
+    {
+        if (!_isWebViewInitialized || _currentGraph is null || string.IsNullOrWhiteSpace(nodeId))
         {
-            var symbolLinks = BuildSymbolLinkMap(_currentGraph, document);
-            CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(document, symbolLinks));
-            if (focusGraph)
-            {
-                FocusGraphNode(message.NodeId);
-            }
-
-            SetStatusMessage("コード表示を更新");
             return;
         }
 
-        var fallback = BuildFallbackDocument(_currentGraph, message.NodeId);
-        var fallbackLinks = BuildSymbolLinkMap(_currentGraph, fallback);
-        CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(fallback, fallbackLinks));
-        if (focusGraph)
+        SelectedNodeText.Text = nodeId;
+        SourceCodeDocument document;
+        string status;
+
+        try
         {
-            FocusGraphNode(message.NodeId);
+            document = SourceCodeViewer.OpenNode(_currentGraph, nodeId);
+            status = "コード表示を更新";
+        }
+        catch (InvalidOperationException)
+        {
+            document = BuildFallbackDocument(_currentGraph, nodeId);
+            status = "メタ情報表示にフォールバック";
         }
 
-        SetStatusMessage("メタ情報表示にフォールバック");
+        var symbolLinks = BuildSymbolLinkMap(_currentGraph, document);
+        CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(document, symbolLinks));
+
+        if (focusGraph)
+        {
+            FocusGraphNode(nodeId);
+        }
+
+        if (appendHistory)
+        {
+            AppendCodeNavigationHistory(nodeId);
+        }
+
+        SetStatusMessage(status);
     }
 
     private static SourceCodeDocument BuildFallbackDocument(DependencyGraph graph, string nodeId)
@@ -496,6 +562,102 @@ public partial class MainWindow : Window
     private void SetStatusMessage(string message)
     {
         StatusText.Text = message;
+    }
+
+    private void OnCodeHistoryBackClick(object sender, RoutedEventArgs e)
+    {
+        NavigateCodeHistory(-1);
+    }
+
+    private void OnCodeHistoryForwardClick(object sender, RoutedEventArgs e)
+    {
+        NavigateCodeHistory(1);
+    }
+
+    private void AppendCodeNavigationHistory(string nodeId)
+    {
+        if (_isNavigatingCodeHistory || string.IsNullOrWhiteSpace(nodeId))
+        {
+            return;
+        }
+
+        if (_codeNavigationHistoryIndex >= 0 &&
+            _codeNavigationHistoryIndex < _codeNavigationHistory.Count &&
+            string.Equals(_codeNavigationHistory[_codeNavigationHistoryIndex], nodeId, StringComparison.Ordinal))
+        {
+            UpdateCodeNavigationButtonState();
+            return;
+        }
+
+        if (_codeNavigationHistoryIndex < _codeNavigationHistory.Count - 1)
+        {
+            _codeNavigationHistory.RemoveRange(
+                _codeNavigationHistoryIndex + 1,
+                _codeNavigationHistory.Count - _codeNavigationHistoryIndex - 1);
+        }
+
+        _codeNavigationHistory.Add(nodeId);
+        if (_codeNavigationHistory.Count > CodeNavigationHistoryLimit)
+        {
+            var overflow = _codeNavigationHistory.Count - CodeNavigationHistoryLimit;
+            _codeNavigationHistory.RemoveRange(0, overflow);
+        }
+
+        _codeNavigationHistoryIndex = _codeNavigationHistory.Count - 1;
+        UpdateCodeNavigationButtonState();
+    }
+
+    private void NavigateCodeHistory(int offset)
+    {
+        if (_codeNavigationHistory.Count == 0 || _currentGraph is null || _isAnalyzing)
+        {
+            UpdateCodeNavigationButtonState();
+            return;
+        }
+
+        var nextIndex = _codeNavigationHistoryIndex + offset;
+        if (nextIndex < 0 || nextIndex >= _codeNavigationHistory.Count)
+        {
+            UpdateCodeNavigationButtonState();
+            return;
+        }
+
+        _codeNavigationHistoryIndex = nextIndex;
+        var nodeId = _codeNavigationHistory[_codeNavigationHistoryIndex];
+
+        _isNavigatingCodeHistory = true;
+        try
+        {
+            OpenNodeInCodePane(nodeId, focusGraph: true, appendHistory: false);
+        }
+        finally
+        {
+            _isNavigatingCodeHistory = false;
+            UpdateCodeNavigationButtonState();
+        }
+    }
+
+    private void ResetCodeNavigationHistory()
+    {
+        _codeNavigationHistory.Clear();
+        _codeNavigationHistoryIndex = -1;
+        _isNavigatingCodeHistory = false;
+        UpdateCodeNavigationButtonState();
+    }
+
+    private void UpdateCodeNavigationButtonState()
+    {
+        if (!_isWebViewInitialized || _isAnalyzing || _currentGraph is null)
+        {
+            CodeHistoryBackButton.IsEnabled = false;
+            CodeHistoryForwardButton.IsEnabled = false;
+            return;
+        }
+
+        CodeHistoryBackButton.IsEnabled = _codeNavigationHistoryIndex > 0;
+        CodeHistoryForwardButton.IsEnabled =
+            _codeNavigationHistoryIndex >= 0 &&
+            _codeNavigationHistoryIndex < _codeNavigationHistory.Count - 1;
     }
 
     private void ApplyOperationsPanelVisibility()
