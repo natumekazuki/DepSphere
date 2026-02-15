@@ -33,12 +33,17 @@ if ([string]::IsNullOrWhiteSpace($PublishDir)) {
         throw "Build script not found: $buildAppScriptPath"
     }
 
-    $PublishDir = & $buildAppScriptPath `
+    $PublishDir = (& $buildAppScriptPath `
         -Configuration $Configuration `
         -Runtime $Runtime `
         -Version $Version `
         -SelfContained $SelfContained `
-        -Clean:$Clean
+        -Clean:$Clean | Select-Object -Last 1)
+}
+
+$PublishDir = "$PublishDir".Trim()
+if ([string]::IsNullOrWhiteSpace($PublishDir)) {
+    throw 'Publish directory is empty.'
 }
 
 $PublishDir = (Resolve-Path -LiteralPath $PublishDir).Path
