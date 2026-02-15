@@ -32,9 +32,58 @@ public static class GraphViewHtmlBuilder
     #overlay .control { margin-top: 8px; }
     #overlay label { display: block; margin-bottom: 2px; color: #cbd5e1; }
     #overlay input[type='range'] { width: 100%; }
-    #clear-filter {
+    #overlay .toolbar {
+      display: flex;
+      gap: 6px;
       margin-top: 10px;
-      width: 100%;
+    }
+    #overlay .toolbar button {
+      flex: 1;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(30, 41, 59, 0.85);
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #overlay .toolbar button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    #search-wrap {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    #search-input {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+      background: rgba(2, 6, 23, 0.72);
+      color: #e2e8f0;
+      outline: none;
+    }
+    #search-input::placeholder { color: rgba(226, 232, 240, 0.55); }
+    #search-button {
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(30, 41, 59, 0.85);
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #filter-status {
+      margin-top: 10px;
+      color: #cbd5e1;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    #clear-filter {
       border: 1px solid rgba(148, 163, 184, 0.45);
       background: rgba(30, 41, 59, 0.85);
       color: #e2e8f0;
@@ -73,7 +122,15 @@ public static class GraphViewHtmlBuilder
       <label for="spread-scale">距離倍率</label>
       <input id="spread-scale" type="range" min="0.6" max="2.6" step="0.1" value="1.0" />
     </div>
-    <button id="clear-filter" type="button" disabled>表示限定解除</button>
+    <div id="search-wrap">
+      <input id="search-input" type="text" placeholder="クラス名検索 (Ctrl+F)" />
+      <button id="search-button" type="button">検索</button>
+    </div>
+    <div class="toolbar">
+      <button id="fit-view" type="button">Fit to View</button>
+      <button id="clear-filter" type="button" disabled>表示限定解除</button>
+    </div>
+    <div id="filter-status">表示中: 0/0</div>
   </div>
   <div id="node-info">
     <div class="title">ノード情報</div>
@@ -87,7 +144,11 @@ public static class GraphViewHtmlBuilder
     const infoBody = document.getElementById('node-info-body');
     const nodeScaleInput = document.getElementById('node-scale');
     const spreadScaleInput = document.getElementById('spread-scale');
+    const fitViewButton = document.getElementById('fit-view');
     const clearFilterButton = document.getElementById('clear-filter');
+    const filterStatus = document.getElementById('filter-status');
+    const searchInput = document.getElementById('search-input');
+    const searchButton = document.getElementById('search-button');
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1220);
@@ -123,6 +184,8 @@ public static class GraphViewHtmlBuilder
     const edgeLines = [];
     let selectedNodeId = null;
     let visibleNodeIds = null;
+    let filterRootNodeId = null;
+    let singleClickTimer = null;
 
     function hexColor(color) {
       if (!color || !color.startsWith('#')) return 0x3b82f6;
@@ -308,6 +371,7 @@ public static class GraphViewHtmlBuilder
       });
 
       refreshEdges();
+      updateFilterStatus();
     }
 
     function setConnectedNodeFilter(nodeId) {
@@ -320,18 +384,101 @@ public static class GraphViewHtmlBuilder
       }
 
       visibleNodeIds = visible;
+      filterRootNodeId = nodeId;
       updateFilterButtonState();
       applyVisualSettings();
     }
 
     function clearNodeFilter() {
       visibleNodeIds = null;
+      filterRootNodeId = null;
       updateFilterButtonState();
       applyVisualSettings();
     }
 
     function updateFilterButtonState() {
       clearFilterButton.disabled = visibleNodeIds === null;
+    }
+
+    function updateFilterStatus() {
+      const totalCount = nodes.length;
+      const visibleCount = visibleNodeIds ? visibleNodeIds.size : totalCount;
+      const rootText = filterRootNodeId ? ` | 起点: ${filterRootNodeId}` : '';
+      filterStatus.textContent = `表示中: ${visibleCount}/${totalCount}${rootText}`;
+    }
+
+    function getVisiblePoints() {
+      const points = [];
+      nodeMeshes.forEach((mesh) => {
+        if (mesh.visible) {
+          points.push(mesh.position.clone());
+        }
+      });
+
+      return points;
+    }
+
+    function fitVisibleNodes() {
+      const points = getVisiblePoints();
+      if (points.length === 0) {
+        return;
+      }
+
+      cameraControl.fitToPoints(points, 1.35);
+    }
+
+    function findNodeIdByQuery(rawQuery) {
+      const normalized = (rawQuery || '').trim().toLowerCase();
+      if (normalized.length === 0) {
+        return null;
+      }
+
+      const exact = nodes.find((node) => {
+        const id = (node.id || '').toLowerCase();
+        const label = (node.label || '').toLowerCase();
+        return id === normalized || label === normalized;
+      });
+      if (exact) {
+        return exact.id;
+      }
+
+      const partial = nodes.find((node) => {
+        const id = (node.id || '').toLowerCase();
+        const label = (node.label || '').toLowerCase();
+        return id.includes(normalized) || label.includes(normalized);
+      });
+      return partial ? partial.id : null;
+    }
+
+    function focusNodeById(nodeId, filterRelated, openCode) {
+      const target = nodeMap.get(nodeId);
+      if (!target) {
+        return false;
+      }
+
+      selectedNodeId = nodeId;
+      if (filterRelated) {
+        setConnectedNodeFilter(nodeId);
+      } else {
+        applyVisualSettings();
+      }
+
+      cameraControl.focus(target.position, 52);
+      updateNodeInfo(target.userData.node);
+      if (openCode) {
+        postNodeSelected(nodeId);
+      }
+
+      return true;
+    }
+
+    function runSearch() {
+      const nodeId = findNodeIdByQuery(searchInput.value);
+      if (!nodeId) {
+        return;
+      }
+
+      focusNodeById(nodeId, true, false);
     }
 
     function pickNodeFromEvent(event) {
@@ -374,14 +521,26 @@ public static class GraphViewHtmlBuilder
       }
 
       const selectedId = selected.userData.nodeId;
-      selectedNodeId = selectedId;
-      setConnectedNodeFilter(selectedId);
-      updateNodeInfo(selected.userData.node);
+      if (singleClickTimer) {
+        clearTimeout(singleClickTimer);
+      }
+
+      singleClickTimer = setTimeout(() => {
+        singleClickTimer = null;
+        selectedNodeId = selectedId;
+        setConnectedNodeFilter(selectedId);
+        updateNodeInfo(selected.userData.node);
+      }, 220);
     });
 
     canvas.addEventListener('dblclick', (event) => {
       if (pointerMoved) {
         return;
+      }
+
+      if (singleClickTimer) {
+        clearTimeout(singleClickTimer);
+        singleClickTimer = null;
       }
 
       const selected = pickNodeFromEvent(event);
@@ -390,15 +549,42 @@ public static class GraphViewHtmlBuilder
       }
 
       const selectedId = selected.userData.nodeId;
-      selectedNodeId = selectedId;
-      applyVisualSettings();
-      updateNodeInfo(selected.userData.node);
-      postNodeSelected(selectedId);
+      focusNodeById(selectedId, false, true);
     });
 
     nodeScaleInput.addEventListener('input', applyVisualSettings);
     spreadScaleInput.addEventListener('input', applyVisualSettings);
+    fitViewButton.addEventListener('click', fitVisibleNodes);
     clearFilterButton.addEventListener('click', clearNodeFilter);
+    searchButton.addEventListener('click', runSearch);
+    searchInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        runSearch();
+      }
+    });
+    window.addEventListener('keydown', (event) => {
+      const key = (event.key || '').toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === 'f') {
+        event.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        clearNodeFilter();
+        return;
+      }
+
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && key === 'f') {
+        if (selectedNodeId) {
+          focusNodeById(selectedNodeId, false, false);
+        } else {
+          fitVisibleNodes();
+        }
+      }
+    });
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -408,6 +594,7 @@ public static class GraphViewHtmlBuilder
 
     updateFilterButtonState();
     applyVisualSettings();
+    fitVisibleNodes();
 
     function createCameraController(camera, surface) {
       const target = new THREE.Vector3(0, 0, 0);
@@ -543,6 +730,32 @@ public static class GraphViewHtmlBuilder
         applyCamera();
       }
 
+      function fitToPoints(points, paddingRatio) {
+        if (!points || points.length === 0) {
+          return;
+        }
+
+        const box = new THREE.Box3();
+        points.forEach((point) => box.expandByPoint(point));
+
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const radius = Math.max(1, Math.max(size.x, size.y, size.z) * 0.5);
+        const fovRad = THREE.MathUtils.degToRad(camera.fov);
+        const padding = paddingRatio || 1.25;
+        const requiredDistance = clampDistance((radius / Math.tan(fovRad * 0.5)) * padding);
+
+        target.copy(center);
+        if (offset.lengthSq() < 1e-8) {
+          offset.set(0, 0, 1);
+        }
+
+        offset.normalize().multiplyScalar(requiredDistance);
+        spherical.setFromVector3(offset);
+        spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, spherical.phi));
+        applyCamera();
+      }
+
       syncFromCamera();
       applyCamera();
 
@@ -556,6 +769,7 @@ public static class GraphViewHtmlBuilder
         setTarget,
         syncFromCamera,
         focus,
+        fitToPoints,
         update: function() { }
       };
     }

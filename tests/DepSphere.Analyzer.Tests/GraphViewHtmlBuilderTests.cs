@@ -49,7 +49,11 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("node-scale", html);
         Assert.Contains("spread-scale", html);
         Assert.Contains("clear-filter", html);
+        Assert.Contains("fit-view", html);
+        Assert.Contains("filter-status", html);
+        Assert.Contains("search-input", html);
         Assert.Contains("表示限定解除", html);
+        Assert.Contains("Fit to View", html);
         Assert.DoesNotContain("OrbitControls.js", html);
         Assert.DoesNotContain("scene.rotation.y +=", html);
     }
@@ -64,7 +68,25 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("setConnectedNodeFilter", html);
         Assert.Contains("canvas.addEventListener('click'", html);
         Assert.Contains("canvas.addEventListener('dblclick'", html);
-        Assert.Contains("postNodeSelected(selectedId)", html);
+        Assert.Contains("singleClickTimer = setTimeout", html);
+        Assert.Contains("clearTimeout(singleClickTimer)", html);
+        Assert.Contains("focusNodeById(selectedId, false, true)", html);
+        Assert.Contains("postNodeSelected(nodeId)", html);
+    }
+
+    [Fact]
+    public void ショートカットとFit操作スクリプトを含める()
+    {
+        var view = BuildSampleView();
+
+        var html = GraphViewHtmlBuilder.Build(view);
+
+        Assert.Contains("window.addEventListener('keydown'", html);
+        Assert.Contains("event.key === 'Escape'", html);
+        Assert.Contains("key === 'f'", html);
+        Assert.Contains("searchInput.focus()", html);
+        Assert.Contains("fitVisibleNodes", html);
+        Assert.Contains("fitToPoints", html);
     }
 
     [Fact]
