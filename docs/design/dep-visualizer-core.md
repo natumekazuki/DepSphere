@@ -151,6 +151,7 @@ WeightScore =
 - ノードダブルクリック時に `SymbolLocation` を解決
 - 内蔵ビューアへ `DocumentPath + Range` を渡して表示
 - 初期表示はReadOnly（編集機能は持たない）
+- コードビュー内でシンボルをダブルクリックした場合、対応ノードへ `nodeSelected` を通知し、グラフ/コードを同期更新する
 
 ## 9. 主要フロー
 ```mermaid
@@ -206,6 +207,8 @@ sequenceDiagram
   - `nodeSelected` メッセージをホストが受信
   - `GraphSelectionCoordinator` でコード取得
   - 右ペインへHTML再描画
+  - 右ペインのコードWebViewでシンボルダブルクリック
+  - ホストがシンボルをノード解決し、中央グラフへフォーカススクリプトを実行
 - フォールバック:
   - SourceLocationが無い場合はノードのメトリクス情報を右ペインへ表示する。
 - 解析入力導線:

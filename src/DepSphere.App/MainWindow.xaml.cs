@@ -4,6 +4,7 @@ using Microsoft.Web.WebView2.Wpf;
 using Microsoft.Win32;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 
 namespace DepSphere.App;
@@ -357,12 +358,22 @@ public partial class MainWindow : Window
 
     private void OnGraphMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
     {
+        HandleNodeSelectedMessage(e.WebMessageAsJson, focusGraph: false);
+    }
+
+    private void OnCodeMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        HandleNodeSelectedMessage(e.WebMessageAsJson, focusGraph: true);
+    }
+
+    private void HandleNodeSelectedMessage(string rawMessage, bool focusGraph)
+    {
         if (!_isWebViewInitialized || _currentGraph is null)
         {
             return;
         }
 
-        if (!GraphHostMessageParser.TryParse(e.WebMessageAsJson, out var message) || message is null)
+        if (!GraphHostMessageParser.TryParse(rawMessage, out var message) || message is null)
         {
             return;
         }
@@ -379,15 +390,27 @@ public partial class MainWindow : Window
 
         SelectedNodeText.Text = message.NodeId;
 
-        if (GraphSelectionCoordinator.TryOpenFromMessage(_currentGraph, e.WebMessageAsJson, out var document) && document is not null)
+        if (GraphSelectionCoordinator.TryOpenFromMessage(_currentGraph, rawMessage, out var document) && document is not null)
         {
-            CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(document));
+            var symbolLinks = BuildSymbolLinkMap(_currentGraph, document);
+            CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(document, symbolLinks));
+            if (focusGraph)
+            {
+                FocusGraphNode(message.NodeId);
+            }
+
             SetStatusMessage("コード表示を更新");
             return;
         }
 
         var fallback = BuildFallbackDocument(_currentGraph, message.NodeId);
-        CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(fallback));
+        var fallbackLinks = BuildSymbolLinkMap(_currentGraph, fallback);
+        CodeWebView.NavigateToString(SourceCodeViewerHtmlBuilder.Build(fallback, fallbackLinks));
+        if (focusGraph)
+        {
+            FocusGraphNode(message.NodeId);
+        }
+
         SetStatusMessage("メタ情報表示にフォールバック");
     }
 
@@ -440,6 +463,8 @@ public partial class MainWindow : Window
 
         GraphWebView.CoreWebView2.WebMessageReceived -= OnGraphMessageReceived;
         GraphWebView.CoreWebView2.WebMessageReceived += OnGraphMessageReceived;
+        CodeWebView.CoreWebView2.WebMessageReceived -= OnCodeMessageReceived;
+        CodeWebView.CoreWebView2.WebMessageReceived += OnCodeMessageReceived;
 
         SetInitializationState(true);
     }
@@ -496,6 +521,53 @@ public partial class MainWindow : Window
         OperationsPanelBorder.Visibility = Visibility.Collapsed;
         LeftPanelSplitter.Visibility = Visibility.Collapsed;
         ToggleOperationsPanelButton.Content = "操作パネルを表示";
+    }
+
+    private void FocusGraphNode(string nodeId)
+    {
+        if (!_isWebViewInitialized || GraphWebView.CoreWebView2 is null || string.IsNullOrWhiteSpace(nodeId))
+        {
+            return;
+        }
+
+        var script = GraphViewScriptCommandBuilder.BuildFocusNodeScript(nodeId);
+        _ = GraphWebView.CoreWebView2.ExecuteScriptAsync(script);
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildSymbolLinkMap(DependencyGraph graph, SourceCodeDocument document)
+    {
+        var tokens = Regex.Matches(document.Content ?? string.Empty, @"\b[A-Za-z_][A-Za-z0-9_]*\b")
+            .Select(match => match.Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var bySimpleName = graph.Nodes
+            .GroupBy(node => ExtractSimpleTypeName(node.Id), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Id).Distinct(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
+
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var token in tokens)
+        {
+            if (!bySimpleName.TryGetValue(token, out var candidates))
+            {
+                continue;
+            }
+
+            if (candidates.Length == 1)
+            {
+                result[token] = candidates[0];
+            }
+        }
+
+        return result;
+    }
+
+    private static string ExtractSimpleTypeName(string nodeId)
+    {
+        var lastDot = nodeId.LastIndexOf('.');
+        var simple = lastDot >= 0 ? nodeId[(lastDot + 1)..] : nodeId;
+        var genericStart = simple.IndexOf('<');
+        return genericStart >= 0 ? simple[..genericStart] : simple;
     }
 
     private void SetErrorDetails(string summary, Exception ex)
