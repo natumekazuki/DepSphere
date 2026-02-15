@@ -54,6 +54,7 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("search-input", html);
         Assert.Contains("表示限定解除", html);
         Assert.Contains("Fit to View", html);
+        Assert.Contains("ホバー: ノード強調", html);
         Assert.DoesNotContain("OrbitControls.js", html);
         Assert.DoesNotContain("scene.rotation.y +=", html);
     }
@@ -72,6 +73,20 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("clearTimeout(singleClickTimer)", html);
         Assert.Contains("focusNodeById(selectedId, false, true)", html);
         Assert.Contains("postNodeSelected(nodeId)", html);
+    }
+
+    [Fact]
+    public void ホバー強調スクリプトを含める()
+    {
+        var view = BuildSampleView();
+
+        var html = GraphViewHtmlBuilder.Build(view);
+
+        Assert.Contains("let hoveredNodeId = null", html);
+        Assert.Contains("setHoveredNode", html);
+        Assert.Contains("canvas.addEventListener('pointerleave'", html);
+        Assert.Contains("mesh.material.emissive.setHex", html);
+        Assert.Contains("label.material.opacity", html);
     }
 
     [Fact]

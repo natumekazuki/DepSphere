@@ -113,6 +113,7 @@ public static class GraphViewHtmlBuilder
     <h1>DepSphere 3D Graph</h1>
     <div>シングルクリック: 接続ノードに限定</div>
     <div>ダブルクリック: コード表示</div>
+    <div>ホバー: ノード強調</div>
     <div>右ドラッグ: 回転 / 左ドラッグ: 平行移動 / ホイール: ズーム</div>
     <div class="control">
       <label for="node-scale">ノード倍率</label>
@@ -183,6 +184,7 @@ public static class GraphViewHtmlBuilder
     const adjacencyMap = new Map();
     const edgeLines = [];
     let selectedNodeId = null;
+    let hoveredNodeId = null;
     let visibleNodeIds = null;
     let filterRootNodeId = null;
     let singleClickTimer = null;
@@ -198,7 +200,7 @@ public static class GraphViewHtmlBuilder
       const canvasEl = document.createElement('canvas');
       const ctx = canvasEl.getContext('2d');
       if (!ctx) {
-        const fallbackMaterial = new THREE.SpriteMaterial({ color: 0xe2e8f0 });
+        const fallbackMaterial = new THREE.SpriteMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.85 });
         const fallback = new THREE.Sprite(fallbackMaterial);
         fallback.scale.set(18, 5, 1);
         fallback.userData.baseScale = new THREE.Vector3(18, 5, 1);
@@ -223,6 +225,7 @@ public static class GraphViewHtmlBuilder
       const material = new THREE.SpriteMaterial({
         map: texture,
         transparent: true,
+        opacity: 0.85,
         depthWrite: false,
         depthTest: false
       });
@@ -293,16 +296,26 @@ public static class GraphViewHtmlBuilder
     });
 
     canvas.addEventListener('pointermove', (event) => {
-      if (!pointerDown) return;
-      const dx = event.clientX - pointerDown.x;
-      const dy = event.clientY - pointerDown.y;
-      if ((dx * dx + dy * dy) > 25) {
-        pointerMoved = true;
+      if (pointerDown) {
+        const dx = event.clientX - pointerDown.x;
+        const dy = event.clientY - pointerDown.y;
+        if ((dx * dx + dy * dy) > 25) {
+          pointerMoved = true;
+        }
+
+        return;
       }
+
+      const hovered = pickNodeFromEvent(event);
+      setHoveredNode(hovered ? hovered.userData.nodeId : null);
     });
 
     canvas.addEventListener('pointerup', () => {
       pointerDown = null;
+    });
+
+    canvas.addEventListener('pointerleave', () => {
+      setHoveredNode(null);
     });
 
     function postNodeSelected(nodeId) {
@@ -359,14 +372,33 @@ public static class GraphViewHtmlBuilder
           mesh.position.copy(basePos).multiplyScalar(spreadScale);
         }
 
+        const hovered = hoveredNodeId === id;
         const selected = selectedNodeId === id;
-        const scale = (selected ? 1.6 : 1.0) * nodeScale;
+        const emphasis = selected ? 1.6 : (hovered ? 1.28 : 1.0);
+        const scale = emphasis * nodeScale;
         mesh.scale.setScalar(scale);
+
+        if (mesh.material && mesh.material.emissive) {
+          if (selected) {
+            mesh.material.emissive.setHex(0x334155);
+            mesh.material.emissiveIntensity = 0.85;
+          } else if (hovered) {
+            mesh.material.emissive.setHex(0x1d4ed8);
+            mesh.material.emissiveIntensity = 0.45;
+          } else {
+            mesh.material.emissive.setHex(0x000000);
+            mesh.material.emissiveIntensity = 0;
+          }
+        }
 
         const label = mesh.userData.labelSprite;
         if (label && label.userData.baseScale) {
           const bs = label.userData.baseScale;
-          label.scale.set(bs.x * nodeScale, bs.y * nodeScale, 1);
+          const labelScale = (selected ? 1.18 : (hovered ? 1.08 : 1.0)) * nodeScale;
+          label.scale.set(bs.x * labelScale, bs.y * labelScale, 1);
+          if (label.material) {
+            label.material.opacity = selected ? 1.0 : (hovered ? 0.98 : 0.82);
+          }
         }
       });
 
@@ -472,6 +504,15 @@ public static class GraphViewHtmlBuilder
       return true;
     }
 
+    function setHoveredNode(nodeId) {
+      if (hoveredNodeId === nodeId) {
+        return;
+      }
+
+      hoveredNodeId = nodeId;
+      applyVisualSettings();
+    }
+
     function runSearch() {
       const nodeId = findNodeIdByQuery(searchInput.value);
       if (!nodeId) {
@@ -528,6 +569,7 @@ public static class GraphViewHtmlBuilder
       singleClickTimer = setTimeout(() => {
         singleClickTimer = null;
         selectedNodeId = selectedId;
+        hoveredNodeId = selectedId;
         setConnectedNodeFilter(selectedId);
         updateNodeInfo(selected.userData.node);
       }, 220);
@@ -549,6 +591,7 @@ public static class GraphViewHtmlBuilder
       }
 
       const selectedId = selected.userData.nodeId;
+      hoveredNodeId = selectedId;
       focusNodeById(selectedId, false, true);
     });
 
