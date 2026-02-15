@@ -10,6 +10,7 @@ public static class DependencyAnalyzer
 {
     private static readonly SymbolDisplayFormat DisplayFormat = SymbolDisplayFormat.CSharpErrorMessageFormat;
     private static readonly object MsBuildLock = new();
+    private static readonly SemaphoreSlim WorkspaceGate = new(1, 1);
     private static bool s_msBuildRegistered;
 
     public static DependencyGraph Analyze(IEnumerable<string> sourceCodes)
@@ -40,22 +41,30 @@ public static class DependencyAnalyzer
         }
 
         EnsureMsBuildRegistered();
-        using var workspace = MSBuildWorkspace.Create();
-
-        var extension = Path.GetExtension(path);
-        if (extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+        await WorkspaceGate.WaitAsync(cancellationToken);
+        try
         {
-            var solution = await workspace.OpenSolutionAsync(path, cancellationToken: cancellationToken);
-            return await AnalyzeProjectsAsync(solution.Projects, cancellationToken);
-        }
+            using var workspace = MSBuildWorkspace.Create();
 
-        if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            var extension = Path.GetExtension(path);
+            if (extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+            {
+                var solution = await workspace.OpenSolutionAsync(path, cancellationToken: cancellationToken);
+                return await AnalyzeProjectsAsync(solution.Projects, cancellationToken);
+            }
+
+            if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            {
+                var project = await workspace.OpenProjectAsync(path, cancellationToken: cancellationToken);
+                return await AnalyzeProjectsAsync(new[] { project }, cancellationToken);
+            }
+
+            throw new NotSupportedException("Only .sln and .csproj are supported.");
+        }
+        finally
         {
-            var project = await workspace.OpenProjectAsync(path, cancellationToken: cancellationToken);
-            return await AnalyzeProjectsAsync(new[] { project }, cancellationToken);
+            WorkspaceGate.Release();
         }
-
-        throw new NotSupportedException("Only .sln and .csproj are supported.");
     }
 
     private static async Task<DependencyGraph> AnalyzeProjectsAsync(
@@ -140,7 +149,10 @@ public static class DependencyAnalyzer
                         raw.CallSiteCount,
                         raw.FanOut,
                         raw.InDegree,
-                        score)));
+                        score))
+                {
+                    Location = raw.Location
+                });
         }
 
         return nodes;
@@ -194,6 +206,18 @@ public static class DependencyAnalyzer
             }
 
             var model = compilation.GetSemanticModel(syntax.SyntaxTree);
+
+            if (metrics.Location is null)
+            {
+                var span = syntax.SyntaxTree.GetLineSpan(syntax.Span);
+                var path = syntax.SyntaxTree.FilePath ?? string.Empty;
+                metrics.Location = new SourceLocation(
+                    path,
+                    span.StartLinePosition.Line + 1,
+                    span.StartLinePosition.Character + 1,
+                    span.EndLinePosition.Line + 1,
+                    span.EndLinePosition.Character + 1);
+            }
 
             metrics.MethodCount += syntax.Members.OfType<MethodDeclarationSyntax>().Count();
             metrics.StatementCount += syntax.DescendantNodes().OfType<StatementSyntax>().Count();
@@ -430,5 +454,7 @@ public static class DependencyAnalyzer
         public int InDegree { get; set; }
 
         public HashSet<string> ReferenceTargets { get; } = new(StringComparer.Ordinal);
+
+        public SourceLocation? Location { get; set; }
     }
 }
