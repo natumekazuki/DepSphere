@@ -168,10 +168,17 @@ public partial class MainWindow : Window
         _analysisCts = cts;
         SetAnalysisState(isAnalyzing: true, canCancel: true);
         StatusText.Text = "解析中...";
+        var progress = new Progress<AnalysisProgress>(item =>
+        {
+            if (_isAnalyzing)
+            {
+                StatusText.Text = FormatProgress(item);
+            }
+        });
 
         try
         {
-            var graph = await DependencyAnalyzer.AnalyzePathAsync(path, cts.Token);
+            var graph = await DependencyAnalyzer.AnalyzePathAsync(path, progress, cts.Token);
             RenderGraph(graph, $"解析完了: {Path.GetFileName(path)}");
         }
         catch (OperationCanceledException)
@@ -242,6 +249,16 @@ public partial class MainWindow : Window
 
         path = trimmed;
         return true;
+    }
+
+    private static string FormatProgress(AnalysisProgress progress)
+    {
+        if (progress.Current is int current && progress.Total is int total && total > 0)
+        {
+            return $"{progress.Message} ({current}/{total})";
+        }
+
+        return progress.Message;
     }
 
     private void SetAnalysisState(bool isAnalyzing, bool canCancel)

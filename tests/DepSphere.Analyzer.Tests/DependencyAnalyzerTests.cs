@@ -98,6 +98,22 @@ public class DependencyAnalyzerTests
             edge => edge.From == "SampleFixture.Impl" && edge.To == "SampleFixture.IService" && edge.Kind == DependencyKind.Implement);
     }
 
+    [Fact]
+    public async Task 解析進捗を通知できる()
+    {
+        var csprojPath = GetFixturePath("SampleLib", "SampleLib.csproj");
+        var progress = new CollectingProgress<AnalysisProgress>();
+
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(csprojPath, progress, CancellationToken.None);
+
+        Assert.NotEmpty(graph.Nodes);
+        Assert.Contains(progress.Items, item => item.Stage == "prepare");
+        Assert.Contains(progress.Items, item => item.Stage == "load");
+        Assert.Contains(progress.Items, item => item.Stage == "compile");
+        Assert.Contains(progress.Items, item => item.Stage == "metrics");
+        Assert.Contains(progress.Items, item => item.Stage == "complete");
+    }
+
     private static string GetFixturePath(params string[] paths)
     {
         var root = FindRepoRoot();
@@ -121,5 +137,15 @@ public class DependencyAnalyzerTests
         }
 
         throw new InvalidOperationException("Repository root not found.");
+    }
+
+    private sealed class CollectingProgress<T> : IProgress<T>
+    {
+        public List<T> Items { get; } = [];
+
+        public void Report(T value)
+        {
+            Items.Add(value);
+        }
     }
 }

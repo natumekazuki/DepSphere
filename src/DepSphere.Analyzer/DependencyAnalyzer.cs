@@ -28,7 +28,15 @@ public static class DependencyAnalyzer
         return AnalyzeCompilations(new[] { compilation });
     }
 
-    public static async Task<DependencyGraph> AnalyzePathAsync(string path, CancellationToken cancellationToken = default)
+    public static Task<DependencyGraph> AnalyzePathAsync(string path, CancellationToken cancellationToken = default)
+    {
+        return AnalyzePathAsync(path, progress: null, cancellationToken);
+    }
+
+    public static async Task<DependencyGraph> AnalyzePathAsync(
+        string path,
+        IProgress<AnalysisProgress>? progress,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -40,23 +48,36 @@ public static class DependencyAnalyzer
             throw new FileNotFoundException("Target file does not exist.", path);
         }
 
+        ReportProgress(progress, "prepare", "入力検証完了");
         EnsureMsBuildRegistered();
+        ReportProgress(progress, "prepare", "MSBuild 初期化完了");
+        ReportProgress(progress, "prepare", "解析ワークスペース取得待機中");
         await WorkspaceGate.WaitAsync(cancellationToken);
         try
         {
+            ReportProgress(progress, "prepare", "解析ワークスペースを確保");
             using var workspace = MSBuildWorkspace.Create();
 
             var extension = Path.GetExtension(path);
             if (extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
             {
+                ReportProgress(progress, "load", "ソリューションを読み込み中");
                 var solution = await workspace.OpenSolutionAsync(path, cancellationToken: cancellationToken);
-                return await AnalyzeProjectsAsync(solution.Projects, cancellationToken);
+                var projects = solution.Projects.ToArray();
+                ReportProgress(progress, "load", "ソリューション読込完了", projects.Length, projects.Length);
+                var graph = await AnalyzeProjectsAsync(projects, progress, cancellationToken);
+                ReportProgress(progress, "complete", "解析完了");
+                return graph;
             }
 
             if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
             {
+                ReportProgress(progress, "load", "プロジェクトを読み込み中");
                 var project = await workspace.OpenProjectAsync(path, cancellationToken: cancellationToken);
-                return await AnalyzeProjectsAsync(new[] { project }, cancellationToken);
+                ReportProgress(progress, "load", "プロジェクト読込完了", 1, 1);
+                var graph = await AnalyzeProjectsAsync(new[] { project }, progress, cancellationToken);
+                ReportProgress(progress, "complete", "解析完了");
+                return graph;
             }
 
             throw new NotSupportedException("Only .sln and .csproj are supported.");
@@ -69,11 +90,18 @@ public static class DependencyAnalyzer
 
     private static async Task<DependencyGraph> AnalyzeProjectsAsync(
         IEnumerable<Project> projects,
+        IProgress<AnalysisProgress>? progress,
         CancellationToken cancellationToken)
     {
+        var projectList = projects.ToList();
         var compilations = new List<Compilation>();
-        foreach (var project in projects)
+        var total = projectList.Count;
+        var current = 0;
+        foreach (var project in projectList)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            current++;
+            ReportProgress(progress, "compile", $"コンパイル作成中: {project.Name}", current, total);
             var compilation = await project.GetCompilationAsync(cancellationToken);
             if (compilation is not null)
             {
@@ -81,22 +109,39 @@ public static class DependencyAnalyzer
             }
         }
 
-        return AnalyzeCompilations(compilations);
+        ReportProgress(progress, "compile", "コンパイル作成完了", compilations.Count, total);
+        return AnalyzeCompilations(compilations, progress, cancellationToken);
     }
 
-    private static DependencyGraph AnalyzeCompilations(IEnumerable<Compilation> compilations)
+    private static DependencyGraph AnalyzeCompilations(
+        IEnumerable<Compilation> compilations,
+        IProgress<AnalysisProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        ReportProgress(progress, "metrics", "型定義を収集中");
         var declaredTypes = CollectDeclaredTypes(compilations);
         var declaredTypeIds = declaredTypes.Keys.ToHashSet(StringComparer.Ordinal);
         var rawMetrics = new Dictionary<string, RawMetrics>(StringComparer.Ordinal);
         var edges = new HashSet<DependencyEdge>();
 
+        var totalTypes = declaredTypes.Count;
+        var currentType = 0;
         foreach (var pair in declaredTypes)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            currentType++;
+            if (totalTypes > 0 && (currentType == 1 || currentType == totalTypes || currentType % 25 == 0))
+            {
+                ReportProgress(progress, "metrics", "メトリクス算出中", currentType, totalTypes);
+            }
+
             var metrics = BuildRawMetrics(pair.Value.Compilation, pair.Value.Symbol, declaredTypeIds, edges);
             rawMetrics[pair.Key] = metrics;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+        ReportProgress(progress, "metrics", "グラフ構築中");
         var inDegreeMap = edges
             .GroupBy(edge => edge.To, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
@@ -113,6 +158,7 @@ public static class DependencyAnalyzer
             .ThenBy(edge => edge.Kind)
             .ToArray();
 
+        ReportProgress(progress, "metrics", "グラフ構築完了");
         return new DependencyGraph(nodes, orderedEdges);
     }
 
@@ -435,6 +481,16 @@ public static class DependencyAnalyzer
 
             s_msBuildRegistered = true;
         }
+    }
+
+    private static void ReportProgress(
+        IProgress<AnalysisProgress>? progress,
+        string stage,
+        string message,
+        int? current = null,
+        int? total = null)
+    {
+        progress?.Report(new AnalysisProgress(stage, message, current, total));
     }
 
     private sealed record DeclaredTypeContext(Compilation Compilation, INamedTypeSymbol Symbol);

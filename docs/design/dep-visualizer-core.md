@@ -180,6 +180,7 @@ sequenceDiagram
   - `再解析` は直近の解析パスを優先し、未指定時はサンプル解析にフォールバックする。
   - 解析実行中は入力系ボタンを無効化し、多重実行を防止する。
   - `キャンセル` ボタンで `CancellationToken` を通知し、停止時は状態表示を `解析をキャンセルしました。` に更新する。
+  - 解析中の状態表示は `prepare/load/compile/metrics/complete` ステージで段階更新する。
 - ビルド方針:
   - `net8.0-windows10.0.19041.0` + `UseWPF=true`
   - 非Windows環境ビルドのため `EnableWindowsTargeting=true` を設定する。
