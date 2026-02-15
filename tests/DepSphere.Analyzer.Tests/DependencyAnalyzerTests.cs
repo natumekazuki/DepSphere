@@ -56,6 +56,8 @@ public class DependencyAnalyzerTests
             }
         }
         """;
+    private const int MediumBenchmarkExpectedNodeCount = 82;
+    private const int MediumBenchmarkExpectedEdgeCount = 320;
 
     [Fact]
     public void 継承依存を抽出できる()
@@ -213,6 +215,23 @@ public class DependencyAnalyzerTests
         {
             _ = DependencyAnalyzer.Analyze(new[] { Source }, options);
         });
+    }
+
+    [Fact]
+    public async Task 中規模Fixtureの解析ベンチ基準を満たす()
+    {
+        var projectPath = GetFixturePath("MediumBenchmark", "MediumBenchmark.csproj");
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(projectPath);
+
+        stopwatch.Stop();
+
+        Assert.Equal(MediumBenchmarkExpectedNodeCount, graph.Nodes.Count);
+        Assert.Equal(MediumBenchmarkExpectedEdgeCount, graph.Edges.Count);
+        Assert.True(
+            stopwatch.Elapsed <= TimeSpan.FromSeconds(20),
+            $"解析時間が基準を超えました: {stopwatch.Elapsed.TotalMilliseconds:F0} ms");
     }
 
     private static string GetFixturePath(params string[] paths)
