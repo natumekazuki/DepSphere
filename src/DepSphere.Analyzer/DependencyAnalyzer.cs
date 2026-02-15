@@ -1,12 +1,16 @@
+using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.MSBuild;
 
 namespace DepSphere.Analyzer;
 
 public static class DependencyAnalyzer
 {
     private static readonly SymbolDisplayFormat DisplayFormat = SymbolDisplayFormat.CSharpErrorMessageFormat;
+    private static readonly object MsBuildLock = new();
+    private static bool s_msBuildRegistered;
 
     public static DependencyGraph Analyze(IEnumerable<string> sourceCodes)
     {
@@ -20,17 +24,68 @@ public static class DependencyAnalyzer
             references: BuildMetadataReferences(),
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        var declaredTypes = CollectDeclaredTypes(compilation);
+        return AnalyzeCompilations(new[] { compilation });
+    }
+
+    public static async Task<DependencyGraph> AnalyzePathAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new ArgumentException("Path is required.", nameof(path));
+        }
+
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException("Target file does not exist.", path);
+        }
+
+        EnsureMsBuildRegistered();
+        using var workspace = MSBuildWorkspace.Create();
+
+        var extension = Path.GetExtension(path);
+        if (extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+        {
+            var solution = await workspace.OpenSolutionAsync(path, cancellationToken: cancellationToken);
+            return await AnalyzeProjectsAsync(solution.Projects, cancellationToken);
+        }
+
+        if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            var project = await workspace.OpenProjectAsync(path, cancellationToken: cancellationToken);
+            return await AnalyzeProjectsAsync(new[] { project }, cancellationToken);
+        }
+
+        throw new NotSupportedException("Only .sln and .csproj are supported.");
+    }
+
+    private static async Task<DependencyGraph> AnalyzeProjectsAsync(
+        IEnumerable<Project> projects,
+        CancellationToken cancellationToken)
+    {
+        var compilations = new List<Compilation>();
+        foreach (var project in projects)
+        {
+            var compilation = await project.GetCompilationAsync(cancellationToken);
+            if (compilation is not null)
+            {
+                compilations.Add(compilation);
+            }
+        }
+
+        return AnalyzeCompilations(compilations);
+    }
+
+    private static DependencyGraph AnalyzeCompilations(IEnumerable<Compilation> compilations)
+    {
+        var declaredTypes = CollectDeclaredTypes(compilations);
         var declaredTypeIds = declaredTypes.Keys.ToHashSet(StringComparer.Ordinal);
         var rawMetrics = new Dictionary<string, RawMetrics>(StringComparer.Ordinal);
         var edges = new HashSet<DependencyEdge>();
 
         foreach (var pair in declaredTypes)
         {
-            var sourceId = pair.Key;
-            var sourceType = pair.Value;
-            var metrics = BuildRawMetrics(compilation, sourceType, declaredTypeIds, edges);
-            rawMetrics[sourceId] = metrics;
+            var metrics = BuildRawMetrics(pair.Value.Compilation, pair.Value.Symbol, declaredTypeIds, edges);
+            rawMetrics[pair.Key] = metrics;
         }
 
         var inDegreeMap = edges
@@ -43,7 +98,6 @@ public static class DependencyAnalyzer
         }
 
         var nodes = BuildNodes(rawMetrics);
-
         var orderedEdges = edges
             .OrderBy(edge => edge.From, StringComparer.Ordinal)
             .ThenBy(edge => edge.To, StringComparer.Ordinal)
@@ -209,7 +263,22 @@ public static class DependencyAnalyzer
             or ConditionalExpressionSyntax;
     }
 
-    private static Dictionary<string, INamedTypeSymbol> CollectDeclaredTypes(Compilation compilation)
+    private static Dictionary<string, DeclaredTypeContext> CollectDeclaredTypes(IEnumerable<Compilation> compilations)
+    {
+        var declaredTypes = new Dictionary<string, DeclaredTypeContext>(StringComparer.Ordinal);
+
+        foreach (var compilation in compilations)
+        {
+            foreach (var pair in CollectDeclaredTypesFromCompilation(compilation))
+            {
+                declaredTypes.TryAdd(pair.Key, new DeclaredTypeContext(compilation, pair.Value));
+            }
+        }
+
+        return declaredTypes;
+    }
+
+    private static Dictionary<string, INamedTypeSymbol> CollectDeclaredTypesFromCompilation(Compilation compilation)
     {
         var declaredTypes = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
 
@@ -314,6 +383,37 @@ public static class DependencyAnalyzer
 
         return locations.Select(location => MetadataReference.CreateFromFile(location)).ToArray();
     }
+
+    private static void EnsureMsBuildRegistered()
+    {
+        if (MSBuildLocator.IsRegistered || s_msBuildRegistered)
+        {
+            return;
+        }
+
+        lock (MsBuildLock)
+        {
+            if (MSBuildLocator.IsRegistered || s_msBuildRegistered)
+            {
+                return;
+            }
+
+            var instances = MSBuildLocator.QueryVisualStudioInstances().ToArray();
+            if (instances.Length > 0)
+            {
+                var instance = instances.OrderByDescending(item => item.Version).First();
+                MSBuildLocator.RegisterInstance(instance);
+            }
+            else
+            {
+                MSBuildLocator.RegisterDefaults();
+            }
+
+            s_msBuildRegistered = true;
+        }
+    }
+
+    private sealed record DeclaredTypeContext(Compilation Compilation, INamedTypeSymbol Symbol);
 
     private sealed class RawMetrics
     {

@@ -75,4 +75,51 @@ public class DependencyAnalyzerTests
         Assert.True(impl.Metrics.FanOut >= 1);
         Assert.True(impl.Metrics.WeightScore > dependency.Metrics.WeightScore);
     }
+
+    [Fact]
+    public async Task csprojパスから解析できる()
+    {
+        var csprojPath = GetFixturePath("SampleLib", "SampleLib.csproj");
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(csprojPath);
+
+        Assert.Contains(
+            graph.Edges,
+            edge => edge.From == "SampleFixture.Impl" && edge.To == "SampleFixture.Base" && edge.Kind == DependencyKind.Inherit);
+    }
+
+    [Fact]
+    public async Task slnパスから解析できる()
+    {
+        var slnPath = GetFixturePath("SampleWorkspace.sln");
+        var graph = await DependencyAnalyzer.AnalyzePathAsync(slnPath);
+
+        Assert.Contains(
+            graph.Edges,
+            edge => edge.From == "SampleFixture.Impl" && edge.To == "SampleFixture.IService" && edge.Kind == DependencyKind.Implement);
+    }
+
+    private static string GetFixturePath(params string[] paths)
+    {
+        var root = FindRepoRoot();
+        var all = new[] { root, "tests", "DepSphere.Analyzer.Tests", "Fixtures" }
+            .Concat(paths)
+            .ToArray();
+        return Path.Combine(all);
+    }
+
+    private static string FindRepoRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            if (Directory.Exists(Path.Combine(current.FullName, ".git")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new InvalidOperationException("Repository root not found.");
+    }
 }
