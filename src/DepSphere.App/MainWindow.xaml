@@ -1,0 +1,66 @@
+<Window x:Class="DepSphere.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="DepSphere Host" Height="920" Width="1560"
+        MinHeight="720" MinWidth="1200"
+        Background="{StaticResource BrushSurface}">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="56" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="#0B1220" BorderBrush="#1E293B" BorderThickness="0,0,0,1">
+      <Grid Margin="16,8,16,8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <TextBlock Text="DepSphere" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="  /  WPF Host Preview" FontSize="13" Foreground="{StaticResource BrushMuted}" VerticalAlignment="Bottom" Margin="8,0,0,1" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button Content="サンプル読込" Click="OnLoadSampleClick" />
+          <Button Content="再解析" Click="OnReloadClick" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="14">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="280" />
+        <ColumnDefinition Width="10" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="10" />
+        <ColumnDefinition Width="420" />
+      </Grid.ColumnDefinitions>
+
+      <Border Grid.Column="0" Background="{StaticResource BrushPanel}" CornerRadius="14" Padding="14" BorderBrush="#1E293B" BorderThickness="1">
+        <StackPanel>
+          <TextBlock Text="操作" FontSize="15" FontWeight="SemiBold" />
+          <TextBlock Margin="0,8,0,0" Foreground="{StaticResource BrushMuted}" Text="ノードをクリックすると右ペインにコードが表示されます。" TextWrapping="Wrap" />
+
+          <Separator Margin="0,14,0,14" />
+
+          <TextBlock Text="選択ノード" FontWeight="SemiBold" />
+          <TextBlock x:Name="SelectedNodeText" Margin="0,6,0,0" Text="(未選択)" TextWrapping="Wrap" />
+
+          <Separator Margin="0,14,0,14" />
+
+          <TextBlock Text="状態" FontWeight="SemiBold" />
+          <TextBlock x:Name="StatusText" Margin="0,6,0,0" Foreground="{StaticResource BrushMuted}" Text="初期化待ち" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Column="2" Background="#020617" CornerRadius="14" BorderBrush="#1E293B" BorderThickness="1" ClipToBounds="True">
+        <wv2:WebView2 x:Name="GraphWebView" />
+      </Border>
+
+      <Border Grid.Column="4" Background="#020617" CornerRadius="14" BorderBrush="#1E293B" BorderThickness="1" ClipToBounds="True">
+        <wv2:WebView2 x:Name="CodeWebView" />
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

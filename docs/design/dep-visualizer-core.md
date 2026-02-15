@@ -160,3 +160,20 @@ sequenceDiagram
   - 依存抽出ルール（`reference`/`inherit`/`implement`）の単体テスト
   - 重み計算（正規化/合成スコア）の単体テスト
   - ノード選択からビューア遷移までの連携テスト
+
+## 13. ホスト実装方針（WPF + WebView2）
+- ホストは `src/DepSphere.App` に分離し、`DepSphere.Analyzer` を参照して描画HTML/コードHTMLを受け取る。
+- UI構成:
+  - 左ペイン: 操作・状態・選択ノード表示
+  - 中央ペイン: 3Dグラフ（`GraphViewHtmlBuilder`）
+  - 右ペイン: コードビュー（`SourceCodeViewerHtmlBuilder`）
+- イベント連携:
+  - 中央WebViewでノードクリック
+  - `nodeSelected` メッセージをホストが受信
+  - `GraphSelectionCoordinator` でコード取得
+  - 右ペインへHTML再描画
+- フォールバック:
+  - SourceLocationが無い場合はノードのメトリクス情報を右ペインへ表示する。
+- ビルド方針:
+  - `net8.0-windows10.0.19041.0` + `UseWPF=true`
+  - 非Windows環境ビルドのため `EnableWindowsTargeting=true` を設定する。

@@ -22,12 +22,12 @@
   - `docs/design/dep-visualizer-core.md`（ホスト層構成を追記）
 
 ## Task List
-- [ ] P1: WPFアプリプロジェクト作成とソリューション追加
-- [ ] P2: モダン3ペインシェル（左/中央/右）を実装
-- [ ] P3: WebView2ホスト接続（グラフ表示 + コード表示）
-- [ ] P4: ノード選択イベント連携（クリック -> コード表示更新）
-- [ ] P5: 最小動作確認（起動/表示/選択）
-- [ ] P6: 設計書更新と計画更新
+- [x] P1: WPFアプリプロジェクト作成とソリューション追加
+- [x] P2: モダン3ペインシェル（左/中央/右）を実装
+- [x] P3: WebView2ホスト接続（グラフ表示 + コード表示）
+- [x] P4: ノード選択イベント連携（クリック -> コード表示更新）
+- [x] P5: 最小動作確認（起動/表示/選択）
+- [x] P6: 設計書更新と計画更新
 
 ## Affected Files
 - `docs/plans/20260215-wpf-host-modern-shell.md`
@@ -42,3 +42,9 @@
 
 ## Notes / Logs
 - 2026-02-15: 初版作成。
+- 2026-02-15: `src/DepSphere.App` を手動作成（WPFテンプレート未導入環境のため）。
+- 2026-02-15: 3ペインシェル（左:操作/中央:グラフ/右:コード）を実装。
+- 2026-02-15: WebView2メッセージ受信で `nodeSelected` を処理し、コードビュー更新を実装。
+- 2026-02-15: `dotnet build src/DepSphere.App/DepSphere.App.csproj` 成功。
+- 2026-02-15: `dotnet test DepSphere.sln` 成功。
+- 2026-02-15: `docs/design/dep-visualizer-core.md` にホスト実装方針を追記。
