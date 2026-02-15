@@ -4,11 +4,11 @@
 - 依存エッジ種別（reference/inherit/implement）ごとの件数と密度を算出・出力し、ホットスポット判断の補助情報を可視化する。
 
 ## Task List
-- [ ] `DependencyGraph` からエッジ統計を算出するビルダを実装する。
-- [ ] エッジ統計の単体テストを追加する。
-- [ ] CLI出力へエッジ統計（標準出力 + JSONファイル）を追加する。
-- [ ] CLI利用仕様を設計ドキュメントへ反映する。
-- [ ] `dotnet test` で回帰確認し、Non-Windowsバックログを更新する。
+- [x] `DependencyGraph` からエッジ統計を算出するビルダを実装する。
+- [x] エッジ統計の単体テストを追加する。
+- [x] CLI出力へエッジ統計（標準出力 + JSONファイル）を追加する。
+- [x] CLI利用仕様を設計ドキュメントへ反映する。
+- [x] `dotnet test` で回帰確認し、Non-Windowsバックログを更新する。
 
 ## Affected Files
 - `src/DepSphere.Analyzer/*`
@@ -28,3 +28,8 @@
 
 ## Notes / Logs
 - 2026-02-15: 初版作成。
+- 2026-02-15: `DependencyEdgeStatisticsBuilder` を追加し、種別件数/密度を算出できるようにした。
+- 2026-02-15: `DependencyEdgeStatisticsTests` を追加し、件数・密度計算を検証。
+- 2026-02-15: CLI に `--edge-stats` を追加し、`edge-stats.json` と標準出力へ統計表示を実装。
+- 2026-02-15: `docs/design/dep-visualizer-core.md` のCLI出力仕様を更新。
+- 2026-02-15: `dotnet test DepSphere.sln` を実行し成功（57件）。

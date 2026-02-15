@@ -200,10 +200,14 @@ sequenceDiagram
   - `--out`: 出力ディレクトリ（既定: `artifacts/depsphere`）
   - `--json`: JSON出力パス（既定: `graph.json`）
   - `--html`: HTML出力パス（既定: `graph.html`）
+  - `--edge-stats`: 依存エッジ統計JSON出力パス（既定: `edge-stats.json`）
   - `--progress-interval`: 進捗更新間隔（型件数）
   - `--weight-method/--weight-statement/--weight-branch/--weight-callsite/--weight-fanout/--weight-indegree`: 重み係数
   - `--hotspot-top/--critical-top`: Hotspot/Critical判定閾値
 - 出力:
   - `GraphViewJsonSerializer` による `graph.json`
   - `GraphViewHtmlBuilder` による `graph.html`
+  - `DependencyEdgeStatisticsBuilder` による `edge-stats.json`
+    - `kindStats`: `reference/inherit/implement` ごとの `count` と `density`
+    - `density` は有向グラフ密度 `count / (nodeCount * (nodeCount - 1))` で算出（`nodeCount <= 1` は 0）
 - CLIは進捗ステージ（`prepare/load/compile/metrics/complete`）を標準出力へ表示する。

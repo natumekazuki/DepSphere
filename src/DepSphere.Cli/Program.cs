@@ -1,6 +1,8 @@
 using DepSphere.Analyzer;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 var exitCode = await CliProgram.RunAsync(args);
 return exitCode;
@@ -59,18 +61,29 @@ internal static class CliProgram
 
             var jsonPath = ResolveOutputPath(outputDirectory, options.JsonOutputPath);
             var htmlPath = ResolveOutputPath(outputDirectory, options.HtmlOutputPath);
+            var edgeStatsPath = ResolveOutputPath(outputDirectory, options.EdgeStatsOutputPath);
 
             CreateParentDirectoryIfNeeded(jsonPath);
             CreateParentDirectoryIfNeeded(htmlPath);
+            CreateParentDirectoryIfNeeded(edgeStatsPath);
 
             await File.WriteAllTextAsync(jsonPath, GraphViewJsonSerializer.Serialize(view), Encoding.UTF8);
             await File.WriteAllTextAsync(htmlPath, GraphViewHtmlBuilder.Build(view), Encoding.UTF8);
 
+            var edgeStats = DependencyEdgeStatisticsBuilder.Build(graph);
+            await File.WriteAllTextAsync(edgeStatsPath, JsonSerializer.Serialize(edgeStats, CreateJsonOptions()), Encoding.UTF8);
+
             Console.WriteLine("保存完了");
             Console.WriteLine($"JSON: {jsonPath}");
             Console.WriteLine($"HTML: {htmlPath}");
+            Console.WriteLine($"EDGE-STATS: {edgeStatsPath}");
             Console.WriteLine($"ノード数: {view.Nodes.Count}");
             Console.WriteLine($"エッジ数: {view.Edges.Count}");
+            Console.WriteLine($"全体密度: {edgeStats.OverallDensity:F3}");
+            foreach (var stat in edgeStats.KindStats)
+            {
+                Console.WriteLine($"  - {stat.Kind}: count={stat.Count}, density={stat.Density:F3}");
+            }
 
             return 0;
         }
@@ -100,6 +113,18 @@ internal static class CliProgram
         }
     }
 
+    private static JsonSerializerOptions CreateJsonOptions()
+    {
+        var options = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
+
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        return options;
+    }
+
     private static string FormatProgress(AnalysisProgress progress)
     {
         if (progress.Current is int current && progress.Total is int total && total > 0)
@@ -122,6 +147,7 @@ internal static class CliProgram
               --out <directory>            出力先ディレクトリ（既定: artifacts/depsphere）
               --json <path>                JSON出力パス（既定: graph.json）
               --html <path>                HTML出力パス（既定: graph.html）
+              --edge-stats <path>          エッジ統計JSON出力パス（既定: edge-stats.json）
               --progress-interval <int>    進捗更新間隔（型件数、既定: 25）
               --weight-method <double>     MethodCount重み（既定: 0.15）
               --weight-statement <double>  StatementCount重み（既定: 0.30）
@@ -144,6 +170,7 @@ internal sealed record CliOptions(
     string OutputDirectory,
     string JsonOutputPath,
     string HtmlOutputPath,
+    string EdgeStatsOutputPath,
     int ProgressInterval,
     double WeightMethod,
     double WeightStatement,
@@ -158,6 +185,7 @@ internal sealed record CliOptions(
     private const string DefaultOutputDirectory = "artifacts/depsphere";
     private const string DefaultJsonOutputPath = "graph.json";
     private const string DefaultHtmlOutputPath = "graph.html";
+    private const string DefaultEdgeStatsOutputPath = "edge-stats.json";
 
     public static bool TryParse(string[] args, out CliOptions options, out string? errorMessage)
     {
@@ -165,6 +193,7 @@ internal sealed record CliOptions(
         var outputDirectory = DefaultOutputDirectory;
         var jsonOutputPath = DefaultJsonOutputPath;
         var htmlOutputPath = DefaultHtmlOutputPath;
+        var edgeStatsOutputPath = DefaultEdgeStatsOutputPath;
         var progressInterval = AnalysisOptions.DefaultMetricsProgressReportInterval;
         var weightMethod = AnalysisOptions.DefaultWeightMethod;
         var weightStatement = AnalysisOptions.DefaultWeightStatement;
@@ -217,6 +246,15 @@ internal sealed record CliOptions(
                     {
                         options = Default();
                         errorMessage = "--html の値が不足しています。";
+                        return false;
+                    }
+
+                    continue;
+                case "--edge-stats":
+                    if (!TryReadNext(args, ref i, out edgeStatsOutputPath))
+                    {
+                        options = Default();
+                        errorMessage = "--edge-stats の値が不足しています。";
                         return false;
                     }
 
@@ -359,6 +397,7 @@ internal sealed record CliOptions(
             outputDirectory,
             jsonOutputPath,
             htmlOutputPath,
+            edgeStatsOutputPath,
             progressInterval,
             weightMethod,
             weightStatement,
@@ -394,6 +433,7 @@ internal sealed record CliOptions(
             OutputDirectory: DefaultOutputDirectory,
             JsonOutputPath: DefaultJsonOutputPath,
             HtmlOutputPath: DefaultHtmlOutputPath,
+            EdgeStatsOutputPath: DefaultEdgeStatsOutputPath,
             ProgressInterval: AnalysisOptions.DefaultMetricsProgressReportInterval,
             WeightMethod: AnalysisOptions.DefaultWeightMethod,
             WeightStatement: AnalysisOptions.DefaultWeightStatement,
