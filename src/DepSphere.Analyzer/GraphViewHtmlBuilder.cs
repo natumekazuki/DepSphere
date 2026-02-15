@@ -114,6 +114,7 @@ public static class GraphViewHtmlBuilder
     <div>シングルクリック: 接続ノードに限定</div>
     <div>ダブルクリック: コード表示</div>
     <div>ホバー: ノード強調</div>
+    <div>ラベルLOD: 遠景は重要ノード中心</div>
     <div>右ドラッグ: 回転 / 左ドラッグ: 平行移動 / ホイール: ズーム</div>
     <div class="control">
       <label for="node-scale">ノード倍率</label>
@@ -257,6 +258,7 @@ public static class GraphViewHtmlBuilder
       mesh.position.set(node.x || 0, node.y || 0, node.z || 0);
       mesh.userData.nodeId = node.id;
       mesh.userData.node = node;
+      mesh.userData.level = node.level || 'normal';
       mesh.userData.baseRadius = baseRadius;
 
       const label = createTextSprite(node.label || node.id);
@@ -413,7 +415,45 @@ public static class GraphViewHtmlBuilder
       });
 
       refreshEdges();
+      updateLabelLod();
       updateFilterStatus();
+    }
+
+    function shouldShowLabelForMesh(mesh) {
+      if (!mesh || !mesh.visible) {
+        return false;
+      }
+
+      const id = mesh.userData.nodeId;
+      if (selectedNodeId === id || hoveredNodeId === id || filterRootNodeId === id) {
+        return true;
+      }
+
+      const level = (mesh.userData.level || '').toLowerCase();
+      if (level === 'critical' || level === 'hotspot') {
+        return true;
+      }
+
+      const visibleCount = visibleNodeIds ? visibleNodeIds.size : nodes.length;
+      if (visibleCount <= 24) {
+        return true;
+      }
+
+      const distanceToCamera = mesh.position.distanceTo(camera.position);
+      const cameraToTarget = camera.position.distanceTo(cameraControl.getTarget());
+      const distanceThreshold = Math.max(45, cameraToTarget * 0.42);
+      return distanceToCamera <= distanceThreshold;
+    }
+
+    function updateLabelLod() {
+      nodeMeshes.forEach((mesh) => {
+        const label = mesh.userData.labelSprite;
+        if (!label) {
+          return;
+        }
+
+        label.visible = shouldShowLabelForMesh(mesh);
+      });
     }
 
     function setConnectedNodeFilter(nodeId) {
@@ -947,6 +987,7 @@ public static class GraphViewHtmlBuilder
 
       return {
         setTarget,
+        getTarget: function() { return target.clone(); },
         syncFromCamera,
         focus,
         fitToPoints,
@@ -959,6 +1000,7 @@ public static class GraphViewHtmlBuilder
     function animate() {
       requestAnimationFrame(animate);
       cameraControl.update();
+      updateLabelLod();
       renderer.render(scene, camera);
     }
 

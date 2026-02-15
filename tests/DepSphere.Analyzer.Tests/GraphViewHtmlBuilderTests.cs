@@ -59,6 +59,7 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("戻る", html);
         Assert.Contains("進む", html);
         Assert.Contains("ホバー: ノード強調", html);
+        Assert.Contains("ラベルLOD: 遠景は重要ノード中心", html);
         Assert.DoesNotContain("OrbitControls.js", html);
         Assert.DoesNotContain("scene.rotation.y +=", html);
     }
@@ -91,6 +92,19 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("canvas.addEventListener('pointerleave'", html);
         Assert.Contains("mesh.material.emissive.setHex", html);
         Assert.Contains("label.material.opacity", html);
+    }
+
+    [Fact]
+    public void ラベルLOD制御スクリプトを含める()
+    {
+        var view = BuildSampleView();
+
+        var html = GraphViewHtmlBuilder.Build(view);
+
+        Assert.Contains("function shouldShowLabelForMesh(mesh)", html);
+        Assert.Contains("function updateLabelLod()", html);
+        Assert.Contains("label.visible = shouldShowLabelForMesh(mesh);", html);
+        Assert.Contains("cameraControl.getTarget()", html);
     }
 
     [Fact]
