@@ -187,7 +187,7 @@ public static class GraphViewHtmlBuilder
       <button id="node-info-toggle" class="overlay-icon-toggle" type="button" aria-controls="node-info-content" aria-expanded="true" aria-label="ノード情報を折りたたむ">▽</button>
     </div>
     <div id="node-info-content">
-      <div id="node-info-body">ノードをクリックするとクラス名とメソッド名を表示します。</div>
+      <div id="node-info-body">ノードをクリックするとクラス・メソッド・プロパティ情報を表示します。</div>
     </div>
   </div>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
@@ -347,6 +347,8 @@ public static class GraphViewHtmlBuilder
       mesh.userData.nodeId = node.id;
       mesh.userData.node = node;
       mesh.userData.level = node.level || 'normal';
+      mesh.userData.nodeKind = node.nodeKind || 'type';
+      mesh.userData.openNodeId = node.ownerNodeId || node.id;
       mesh.userData.baseRadius = baseRadius;
 
       const label = createTextSprite(node.label || node.id);
@@ -430,19 +432,27 @@ public static class GraphViewHtmlBuilder
 
     function updateNodeInfo(node) {
       if (!node) {
-        infoBody.textContent = 'ノードをクリックするとクラス名とメソッド名を表示します。';
+        infoBody.textContent = 'ノードをクリックするとクラス・メソッド・プロパティ情報を表示します。';
         return;
       }
 
       const methods = Array.isArray(node.methodNames) ? node.methodNames : [];
+      const properties = Array.isArray(node.propertyNames) ? node.propertyNames : [];
+      const nodeKind = node.nodeKind || 'type';
+      const ownerNodeId = node.ownerNodeId || node.id;
       const methodText = methods.length > 0
         ? methods.join('\n')
         : '(メソッド情報なし)';
+      const propertyText = properties.length > 0
+        ? properties.join('\n')
+        : '(プロパティ情報なし)';
 
       infoBody.textContent =
-        `Class: ${node.id}\n` +
+        `Kind: ${nodeKind}\n` +
+        `Class: ${ownerNodeId}\n` +
         `Label: ${node.label || node.id}\n` +
-        `Methods:\n${methodText}`;
+        `Methods:\n${methodText}\n` +
+        `Properties:\n${propertyText}`;
     }
 
     function refreshEdges() {
@@ -515,6 +525,12 @@ public static class GraphViewHtmlBuilder
       const id = mesh.userData.nodeId;
       if (selectedNodeId === id || hoveredNodeId === id || filterRootNodeId === id) {
         return true;
+      }
+
+      const nodeKind = (mesh.userData.nodeKind || '').toLowerCase();
+      if (nodeKind === 'method' || nodeKind === 'property') {
+        const visibleCountForMembers = visibleNodeIds ? visibleNodeIds.size : nodes.length;
+        return visibleCountForMembers <= 18;
       }
 
       const level = (mesh.userData.level || '').toLowerCase();
@@ -727,7 +743,7 @@ public static class GraphViewHtmlBuilder
       cameraControl.focus(target.position, 52);
       updateNodeInfo(target.userData.node);
       if (openCode) {
-        postNodeSelected(nodeId);
+        postNodeSelected(target.userData.openNodeId || nodeId);
       }
 
       if (recordHistory) {

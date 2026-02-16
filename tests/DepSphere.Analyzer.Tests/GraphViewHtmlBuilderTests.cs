@@ -85,7 +85,7 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("singleClickTimer = setTimeout", html);
         Assert.Contains("clearTimeout(singleClickTimer)", html);
         Assert.Contains("focusNodeById(selectedId, false, true)", html);
-        Assert.Contains("postNodeSelected(nodeId)", html);
+        Assert.Contains("postNodeSelected(target.userData.openNodeId || nodeId)", html);
     }
 
     [Fact]
@@ -156,7 +156,9 @@ public class GraphViewHtmlBuilderTests
         var html = GraphViewHtmlBuilder.Build(view);
 
         Assert.Contains("node.methodNames", html);
+        Assert.Contains("node.propertyNames", html);
         Assert.Contains("Methods:", html);
+        Assert.Contains("Properties:", html);
         Assert.Contains("node-info-body", html);
     }
 

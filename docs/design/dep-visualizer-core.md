@@ -116,10 +116,13 @@ WeightScore =
   - ラベル: 型の単純名（例: `Sample.ServiceImpl` -> `ServiceImpl`）を常時表示
   - サイズ: `WeightScore`
   - 色: 通常（青系）/ Hotspot（橙）/ Critical（赤）
+  - クラスノード配下にメソッドノード・プロパティノードを配置し、`member` エッジで関連を描画する
+  - メソッドノードはメソッド名、プロパティノードはプロパティ名をラベル表示する
   - 選択時に強調表示し、右上の情報パネルへ以下を表示
     - `Class`（完全修飾名）
     - `Label`（表示名）
     - `Methods`（コンストラクタ/メソッド名一覧）
+    - `Properties`（プロパティ名一覧）
 - エッジ:
   - 色分け: `reference` / `inherit` / `implement`
   - 矢印で方向を表示

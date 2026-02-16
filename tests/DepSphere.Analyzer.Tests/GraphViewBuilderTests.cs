@@ -66,7 +66,7 @@ public class GraphViewBuilderTests
     }
 
     [Fact]
-    public void ノード情報にメソッド名一覧を含める()
+    public void ノード情報とメンバーノードを生成できる()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), $"depsphere-methods-{Guid.NewGuid():N}.cs");
         File.WriteAllText(
@@ -76,6 +76,7 @@ public class GraphViewBuilderTests
 
             public class Impl
             {
+                public string Name { get; set; } = string.Empty;
                 public Impl() { }
                 public void Execute() { }
                 private int Compute() => 1;
@@ -98,8 +99,25 @@ public class GraphViewBuilderTests
 
             var view = GraphViewBuilder.Build(graph);
 
-            Assert.Single(view.Nodes);
-            Assert.Equal(new[] { "Compute", "Execute", "Impl" }, view.Nodes[0].MethodNames);
+            var classNode = Assert.Single(view.Nodes.Where(node => node.Id == "Sample.Impl"));
+            Assert.Equal("type", classNode.NodeKind);
+            Assert.Equal(new[] { "Compute", "Execute", "Impl" }, classNode.MethodNames);
+            Assert.Equal(new[] { "Name" }, classNode.PropertyNames);
+
+            var memberNodes = view.Nodes
+                .Where(node => node.OwnerNodeId == "Sample.Impl")
+                .OrderBy(node => node.Id, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(4, memberNodes.Length);
+            Assert.Contains(memberNodes, node => node.NodeKind == "method" && node.Label == "Compute()");
+            Assert.Contains(memberNodes, node => node.NodeKind == "method" && node.Label == "Execute()");
+            Assert.Contains(memberNodes, node => node.NodeKind == "method" && node.Label == "Impl()");
+            Assert.Contains(memberNodes, node => node.NodeKind == "property" && node.Label == "Name");
+
+            var memberEdges = view.Edges
+                .Where(edge => edge.From == "Sample.Impl" && edge.Kind == "member")
+                .ToArray();
+            Assert.Equal(memberNodes.Length, memberEdges.Length);
         }
         finally
         {

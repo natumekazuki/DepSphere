@@ -5,6 +5,13 @@ namespace DepSphere.Analyzer;
 
 public static class GraphViewBuilder
 {
+    private const string TypeNodeKind = "type";
+    private const string MethodNodeKind = "method";
+    private const string PropertyNodeKind = "property";
+    private const string MemberNodeLevel = "member";
+    private const string MemberEdgeKind = "member";
+    private static readonly TypeMetrics EmptyMetrics = new(0, 0, 0, 0, 0, 0, 0);
+
     public static GraphView Build(DependencyGraph graph)
     {
         return Build(graph, options: null);
@@ -15,67 +22,148 @@ public static class GraphViewBuilder
         var effectiveOptions = options ?? new AnalysisOptions();
         var thresholds = effectiveOptions.ValidateLevelThresholds();
 
-        var orderedNodes = graph.Nodes
+        var orderedTypeNodes = graph.Nodes
             .OrderBy(node => node.Id, StringComparer.Ordinal)
             .ToArray();
 
-        var levelMap = BuildLevelMap(orderedNodes, thresholds.HotspotTopPercent, thresholds.CriticalTopPercent);
-        var avgInDegree = orderedNodes.Length == 0
+        var levelMap = BuildLevelMap(orderedTypeNodes, thresholds.HotspotTopPercent, thresholds.CriticalTopPercent);
+        var avgInDegree = orderedTypeNodes.Length == 0
             ? 0
-            : orderedNodes.Average(node => node.Metrics.InDegree);
-        var methodNameIndex = BuildMethodNameIndex(orderedNodes);
+            : orderedTypeNodes.Average(node => node.Metrics.InDegree);
+        var typeMemberIndex = BuildTypeMemberIndex(orderedTypeNodes);
 
-        var nodes = new List<GraphViewNode>(orderedNodes.Length);
-        for (var index = 0; index < orderedNodes.Length; index++)
+        var viewNodes = new List<GraphViewNode>(orderedTypeNodes.Length * 2);
+        var typeViewNodes = new List<GraphViewNode>(orderedTypeNodes.Length);
+
+        for (var index = 0; index < orderedTypeNodes.Length; index++)
         {
-            var node = orderedNodes[index];
+            var node = orderedTypeNodes[index];
             var level = levelMap[node.Id];
             var size = 8 + node.Metrics.WeightScore * 24;
             var radius = 30 + size * 0.2;
-            var angle = orderedNodes.Length == 0 ? 0 : (2 * Math.PI * index) / orderedNodes.Length;
+            var angle = orderedTypeNodes.Length == 0 ? 0 : (2 * Math.PI * index) / orderedTypeNodes.Length;
 
             var x = Math.Cos(angle) * radius;
             var y = Math.Sin(angle) * radius;
             var z = (node.Metrics.InDegree - avgInDegree) * 4;
 
-            nodes.Add(
-                new GraphViewNode(
-                    node.Id,
-                    GetSimpleName(node.Id),
-                    x,
-                    y,
-                    z,
-                    size,
-                    ToNodeColor(level),
-                    level,
-                    node.Metrics));
-            nodes[^1] = nodes[^1] with
+            typeMemberIndex.TryGetValue(node.Id, out var memberIndex);
+            memberIndex ??= TypeMemberIndex.Empty;
+
+            var viewNode = new GraphViewNode(
+                node.Id,
+                GetSimpleName(node.Id),
+                x,
+                y,
+                z,
+                size,
+                ToNodeColor(level),
+                level,
+                node.Metrics)
             {
-                MethodNames = methodNameIndex.TryGetValue(node.Id, out var names)
-                    ? names
-                    : Array.Empty<string>()
+                NodeKind = TypeNodeKind,
+                MethodNames = memberIndex.MethodNames,
+                PropertyNames = memberIndex.PropertyNames
             };
+
+            typeViewNodes.Add(viewNode);
+            viewNodes.Add(viewNode);
         }
 
         var edges = graph.Edges
-            .OrderBy(edge => edge.From, StringComparer.Ordinal)
-            .ThenBy(edge => edge.To, StringComparer.Ordinal)
-            .ThenBy(edge => edge.Kind)
             .Select(edge =>
                 new GraphViewEdge(
                     edge.From,
                     edge.To,
                     edge.Kind.ToString().ToLowerInvariant(),
                     ToEdgeColor(edge.Kind)))
+            .ToList();
+
+        foreach (var typeNode in typeViewNodes)
+        {
+            if (!typeMemberIndex.TryGetValue(typeNode.Id, out var memberIndex) || memberIndex is null)
+            {
+                continue;
+            }
+
+            var memberNodes = BuildMemberNodes(typeNode, memberIndex);
+            viewNodes.AddRange(memberNodes);
+
+            foreach (var memberNode in memberNodes)
+            {
+                edges.Add(
+                    new GraphViewEdge(
+                        typeNode.Id,
+                        memberNode.Id,
+                        MemberEdgeKind,
+                        ToMemberEdgeColor()));
+            }
+        }
+
+        var orderedEdges = edges
+            .OrderBy(edge => edge.From, StringComparer.Ordinal)
+            .ThenBy(edge => edge.To, StringComparer.Ordinal)
+            .ThenBy(edge => edge.Kind, StringComparer.Ordinal)
             .ToArray();
 
-        return new GraphView(nodes, edges);
+        return new GraphView(viewNodes, orderedEdges);
     }
 
-    private static Dictionary<string, IReadOnlyList<string>> BuildMethodNameIndex(
+    private static IReadOnlyList<GraphViewNode> BuildMemberNodes(GraphViewNode typeNode, TypeMemberIndex index)
+    {
+        var memberSeeds = index.MethodNames
+            .Select(name => new MemberSeed(name, MethodNodeKind))
+            .Concat(index.PropertyNames.Select(name => new MemberSeed(name, PropertyNodeKind)))
+            .ToArray();
+        if (memberSeeds.Length == 0)
+        {
+            return Array.Empty<GraphViewNode>();
+        }
+
+        var orbitRadius = Math.Max(12, typeNode.Size * 0.95);
+        var baseSize = Math.Max(3.6, typeNode.Size * 0.34);
+        var nodes = new List<GraphViewNode>(memberSeeds.Length);
+
+        for (var indexSeed = 0; indexSeed < memberSeeds.Length; indexSeed++)
+        {
+            var seed = memberSeeds[indexSeed];
+            var angle = (2 * Math.PI * indexSeed) / memberSeeds.Length;
+            var x = typeNode.X + Math.Cos(angle) * orbitRadius;
+            var y = typeNode.Y + Math.Sin(angle) * orbitRadius;
+            var z = typeNode.Z + ((indexSeed % 2 == 0) ? 3.5 : -3.5);
+            var size = seed.Kind == MethodNodeKind ? baseSize : baseSize * 0.92;
+            var label = seed.Kind == MethodNodeKind ? $"{seed.Name}()" : seed.Name;
+            var memberId = BuildMemberNodeId(typeNode.Id, seed.Kind, seed.Name);
+
+            nodes.Add(
+                new GraphViewNode(
+                    memberId,
+                    label,
+                    x,
+                    y,
+                    z,
+                    size,
+                    ToMemberNodeColor(seed.Kind),
+                    MemberNodeLevel,
+                    EmptyMetrics)
+                {
+                    NodeKind = seed.Kind,
+                    OwnerNodeId = typeNode.Id
+                });
+        }
+
+        return nodes;
+    }
+
+    private static string BuildMemberNodeId(string ownerNodeId, string memberKind, string memberName)
+    {
+        return $"{ownerNodeId}::{memberKind}:{memberName}";
+    }
+
+    private static Dictionary<string, TypeMemberIndex> BuildTypeMemberIndex(
         IReadOnlyList<DependencyNode> nodes)
     {
-        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var result = new Dictionary<string, TypeMemberIndex>(StringComparer.Ordinal);
         var nodesByFile = nodes
             .Where(node => !string.IsNullOrWhiteSpace(node.Location?.FilePath))
             .GroupBy(node => node.Location!.FilePath!, StringComparer.OrdinalIgnoreCase);
@@ -105,9 +193,15 @@ public static class GraphViewBuilder
             foreach (var node in group)
             {
                 var type = FindBestMatchingType(types, node);
-                result[node.Id] = type is null
-                    ? Array.Empty<string>()
-                    : CollectMethodNames(type);
+                if (type is null)
+                {
+                    result[node.Id] = TypeMemberIndex.Empty;
+                    continue;
+                }
+
+                result[node.Id] = new TypeMemberIndex(
+                    CollectMethodNames(type),
+                    CollectPropertyNames(type));
             }
         }
 
@@ -172,12 +266,32 @@ public static class GraphViewBuilder
             .ToArray();
     }
 
+    private static string[] CollectPropertyNames(TypeDeclarationSyntax type)
+    {
+        return type.Members
+            .Select(GetPropertyLikeMemberName)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     private static string? GetMethodLikeMemberName(MemberDeclarationSyntax member)
     {
         return member switch
         {
             MethodDeclarationSyntax method => method.Identifier.ValueText,
             ConstructorDeclarationSyntax ctor => ctor.Identifier.ValueText,
+            _ => null
+        };
+    }
+
+    private static string? GetPropertyLikeMemberName(MemberDeclarationSyntax member)
+    {
+        return member switch
+        {
+            PropertyDeclarationSyntax property => property.Identifier.ValueText,
+            IndexerDeclarationSyntax => "this[]",
             _ => null
         };
     }
@@ -237,6 +351,16 @@ public static class GraphViewBuilder
         };
     }
 
+    private static string ToMemberNodeColor(string memberKind)
+    {
+        return memberKind switch
+        {
+            MethodNodeKind => "#38bdf8",
+            PropertyNodeKind => "#14b8a6",
+            _ => "#64748b"
+        };
+    }
+
     private static string ToEdgeColor(DependencyKind kind)
     {
         return kind switch
@@ -245,5 +369,17 @@ public static class GraphViewBuilder
             DependencyKind.Implement => "#f59e0b",
             _ => "#94a3b8"
         };
+    }
+
+    private static string ToMemberEdgeColor()
+    {
+        return "#64748b";
+    }
+
+    private sealed record MemberSeed(string Name, string Kind);
+
+    private sealed record TypeMemberIndex(IReadOnlyList<string> MethodNames, IReadOnlyList<string> PropertyNames)
+    {
+        public static readonly TypeMemberIndex Empty = new(Array.Empty<string>(), Array.Empty<string>());
     }
 }
