@@ -81,13 +81,7 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrWhiteSpace(_currentAnalysisPath))
         {
-            if (!TryGetProgressInterval(ProgressIntervalTextBox.Text, out var progressInterval, out var progressError))
-            {
-                SetStatusMessage(progressError ?? "進捗更新間隔が不正です。");
-                return;
-            }
-
-            await AnalyzeProjectAsync(_currentAnalysisPath, progressInterval);
+            await AnalyzeProjectAsync(_currentAnalysisPath);
             return;
         }
 
@@ -136,14 +130,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!TryGetProgressInterval(ProgressIntervalTextBox.Text, out var progressInterval, out var progressError))
-        {
-            SetStatusMessage(progressError ?? "進捗更新間隔が不正です。");
-            return;
-        }
-
         _currentAnalysisPath = path;
-        await AnalyzeProjectAsync(path, progressInterval);
+        await AnalyzeProjectAsync(path);
     }
 
     private void OnCancelClick(object sender, RoutedEventArgs e)
@@ -206,7 +194,7 @@ public partial class MainWindow : Window
         await Task.CompletedTask;
     }
 
-    private async Task AnalyzeProjectAsync(string path, int progressInterval)
+    private async Task AnalyzeProjectAsync(string path)
     {
         if (_isAnalyzing)
         {
@@ -232,10 +220,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var options = new AnalysisOptions
-            {
-                MetricsProgressReportInterval = progressInterval
-            };
+            var options = new AnalysisOptions();
             var graph = await DependencyAnalyzer.AnalyzePathAsync(path, options, progress, cts.Token);
             RenderGraph(graph, $"解析完了: {Path.GetFileName(path)}", options);
         }
@@ -358,31 +343,6 @@ public partial class MainWindow : Window
         return true;
     }
 
-    private static bool TryGetProgressInterval(string? input, out int interval, out string? errorMessage)
-    {
-        interval = AnalysisOptions.DefaultMetricsProgressReportInterval;
-        errorMessage = null;
-
-        if (string.IsNullOrWhiteSpace(input))
-        {
-            return true;
-        }
-
-        if (!int.TryParse(input.Trim(), out interval))
-        {
-            errorMessage = "進捗更新間隔は数値で入力してください。";
-            return false;
-        }
-
-        if (interval < 1 || interval > 10000)
-        {
-            errorMessage = "進捗更新間隔は 1 から 10000 の範囲で入力してください。";
-            return false;
-        }
-
-        return true;
-    }
-
     private static string FormatProgress(AnalysisProgress progress)
     {
         if (progress.Current is int current && progress.Total is int total && total > 0)
@@ -402,7 +362,6 @@ public partial class MainWindow : Window
         BrowseProjectButton.IsEnabled = canInteract;
         AnalyzeButton.IsEnabled = canInteract;
         ProjectPathTextBox.IsEnabled = canInteract;
-        ProgressIntervalTextBox.IsEnabled = canInteract;
         CancelButton.IsEnabled = _isWebViewInitialized && isAnalyzing && canCancel;
         UpdateCodeNavigationButtonState();
     }
