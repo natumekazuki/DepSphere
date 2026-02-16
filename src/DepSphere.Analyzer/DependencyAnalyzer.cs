@@ -342,11 +342,14 @@ public static class DependencyAnalyzer
 
             foreach (var memberAccess in syntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
             {
-                var symbol = model.GetSymbolInfo(memberAccess.Expression).Symbol;
-                if (symbol is INamedTypeSymbol namedType)
-                {
-                    AddReferenceEdge(sourceId, namedType, declaredTypeIds, metrics.ReferenceTargets, edges);
-                }
+                var symbolInfo = model.GetSymbolInfo(memberAccess);
+                var symbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
+                AddReferenceEdgesFromMemberSymbol(
+                    sourceId,
+                    symbol,
+                    declaredTypeIds,
+                    metrics.ReferenceTargets,
+                    edges);
             }
         }
 
@@ -463,6 +466,45 @@ public static class DependencyAnalyzer
 
         referenceTargets.Add(targetId);
         edges.Add(new DependencyEdge(sourceId, targetId, DependencyKind.Reference));
+    }
+
+    private static void AddReferenceEdgesFromMemberSymbol(
+        string sourceId,
+        ISymbol? symbol,
+        IReadOnlySet<string> declaredTypeIds,
+        ISet<string> referenceTargets,
+        ISet<DependencyEdge> edges)
+    {
+        switch (symbol)
+        {
+            case IPropertySymbol property:
+                AddReferenceEdge(sourceId, property.ContainingType, declaredTypeIds, referenceTargets, edges);
+                AddReferenceEdge(sourceId, property.Type, declaredTypeIds, referenceTargets, edges);
+                break;
+
+            case IFieldSymbol field:
+                AddReferenceEdge(sourceId, field.ContainingType, declaredTypeIds, referenceTargets, edges);
+                AddReferenceEdge(sourceId, field.Type, declaredTypeIds, referenceTargets, edges);
+                break;
+
+            case IMethodSymbol method:
+                AddReferenceEdge(sourceId, method.ContainingType, declaredTypeIds, referenceTargets, edges);
+                AddReferenceEdge(sourceId, method.ReturnType, declaredTypeIds, referenceTargets, edges);
+                foreach (var parameter in method.Parameters)
+                {
+                    AddReferenceEdge(sourceId, parameter.Type, declaredTypeIds, referenceTargets, edges);
+                }
+                break;
+
+            case IEventSymbol @event:
+                AddReferenceEdge(sourceId, @event.ContainingType, declaredTypeIds, referenceTargets, edges);
+                AddReferenceEdge(sourceId, @event.Type, declaredTypeIds, referenceTargets, edges);
+                break;
+
+            case INamedTypeSymbol namedType:
+                AddReferenceEdge(sourceId, namedType, declaredTypeIds, referenceTargets, edges);
+                break;
+        }
     }
 
     private static string ToTypeId(INamedTypeSymbol symbol)

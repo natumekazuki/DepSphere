@@ -56,6 +56,25 @@ public class DependencyAnalyzerTests
             }
         }
         """;
+
+    private const string PropertyAccessSource = """
+        namespace PropertyAccessSample;
+
+        public class Payload { }
+
+        public class Provider
+        {
+            public Payload Value { get; set; } = new();
+        }
+
+        public class Consumer
+        {
+            public void Run(Provider provider)
+            {
+                _ = provider.Value;
+            }
+        }
+        """;
     private const int MediumBenchmarkExpectedNodeCount = 82;
     private const int MediumBenchmarkExpectedEdgeCount = 320;
 
@@ -87,6 +106,18 @@ public class DependencyAnalyzerTests
         Assert.Contains(
             graph.Edges,
             edge => edge.From == "Sample.Impl" && edge.To == "Sample.Dependency" && edge.Kind == DependencyKind.Reference);
+    }
+
+    [Fact]
+    public void インスタンスプロパティ参照の型依存を抽出できる()
+    {
+        var graph = DependencyAnalyzer.Analyze(new[] { PropertyAccessSource });
+
+        Assert.Contains(
+            graph.Edges,
+            edge => edge.From == "PropertyAccessSample.Consumer"
+                && edge.To == "PropertyAccessSample.Payload"
+                && edge.Kind == DependencyKind.Reference);
     }
 
     [Fact]
