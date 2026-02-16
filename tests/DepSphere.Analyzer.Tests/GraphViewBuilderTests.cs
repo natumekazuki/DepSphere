@@ -150,6 +150,54 @@ public class GraphViewBuilderTests
     }
 
     [Fact]
+    public void 判定不能な外部型はexternalノードを生成しない()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"depsphere-external-unknown-{Guid.NewGuid():N}");
+        var projectDir = Path.Combine(tempRoot, "SampleProject");
+        Directory.CreateDirectory(projectDir);
+        var tempFile = Path.Combine(projectDir, "Impl.cs");
+        var tempCsproj = Path.Combine(projectDir, "SampleProject.csproj");
+        File.WriteAllText(tempCsproj, "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        File.WriteAllText(
+            tempFile,
+            """
+            namespace Sample.Domain;
+
+            public class Impl
+            {
+                public Foo Value { get; set; }
+            }
+            """);
+
+        try
+        {
+            var graph = new DependencyGraph(
+                new[]
+                {
+                    new DependencyNode(
+                        "Sample.Domain.Impl",
+                        new TypeMetrics(1, 1, 1, 1, 1, 1, 0.5))
+                    {
+                        Location = new SourceLocation(tempFile, 3, 1, 6, 2)
+                    }
+                },
+                Array.Empty<DependencyEdge>());
+
+            var view = GraphViewBuilder.Build(graph);
+
+            Assert.DoesNotContain(view.Nodes, node => node.NodeKind == "external");
+            Assert.DoesNotContain(view.Edges, edge => edge.Kind == "external");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void 三次元表示用グラフをJSONへ変換できる()
     {
         var graph = DependencyAnalyzer.Analyze(new[] { Source });

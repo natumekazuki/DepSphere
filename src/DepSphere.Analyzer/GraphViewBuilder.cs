@@ -758,7 +758,7 @@ public static class GraphViewBuilder
             return shortName;
         }
 
-        return "External";
+        return null;
     }
 
     private static string ReadFirstIdentifierToken(string text)
