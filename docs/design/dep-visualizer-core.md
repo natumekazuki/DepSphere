@@ -116,13 +116,16 @@ WeightScore =
   - ラベル: 型の単純名（例: `Sample.ServiceImpl` -> `ServiceImpl`）を常時表示
   - サイズ: `WeightScore`
   - 色: 通常（青系）/ Hotspot（橙）/ Critical（赤）
-  - クラスノード配下にメソッドノード・プロパティノードを配置し、`member` エッジで関連を描画する
-  - メソッドノードはメソッド名、プロパティノードはプロパティ名をラベル表示する
+  - クラスノード配下にメソッド/プロパティ/フィールド/イベントのメンバーノードを配置し、`member` エッジで関連を描画する
+  - 構造把握用に `Project` / `Namespace` / `File` の集約ノードを描画し、`contains` エッジで階層を表現する
+  - 外部依存は `External` 集約ノードへ接続し、`external` エッジで可視化する
   - 選択時に強調表示し、右上の情報パネルへ以下を表示
     - `Class`（完全修飾名）
     - `Label`（表示名）
     - `Methods`（コンストラクタ/メソッド名一覧）
     - `Properties`（プロパティ名一覧）
+    - `Fields`（フィールド名一覧）
+    - `Events`（イベント名一覧）
 - エッジ:
   - 色分け: `reference` / `inherit` / `implement`
   - 矢印で方向を表示
@@ -141,6 +144,7 @@ WeightScore =
   - `距離倍率` スライダー（0.6〜2.6）
   - ラベルLOD: 遠景では `Critical/Hotspot/選択/ホバー/起点` を優先表示し、近景または表示ノード数が少ない場合は広く表示
   - 検索ボックスでクラス名検索し、対象ノードへフォーカス
+  - ノード種別フィルタ（Project/Namespace/File/Class/Method/Property/Field/Event/External）で表示対象を切り替えられる
   - ショートカット:
     - `F`: 選択ノードへフォーカス（未選択時は表示中全体へFit）
     - `Esc`: 表示限定解除

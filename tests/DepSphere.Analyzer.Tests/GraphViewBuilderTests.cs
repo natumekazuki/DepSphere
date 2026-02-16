@@ -38,8 +38,9 @@ public class GraphViewBuilderTests
 
         var view = GraphViewBuilder.Build(graph);
 
-        Assert.Equal(graph.Nodes.Count, view.Nodes.Count);
-        Assert.Equal(graph.Edges.Count, view.Edges.Count);
+        Assert.True(view.Nodes.Count >= graph.Nodes.Count);
+        Assert.True(view.Edges.Count >= graph.Edges.Count);
+        Assert.All(graph.Nodes, node => Assert.Contains(view.Nodes, item => item.Id == node.Id));
         Assert.All(view.Nodes, node =>
         {
             Assert.False(string.IsNullOrWhiteSpace(node.Id));
@@ -61,25 +62,34 @@ public class GraphViewBuilderTests
 
         var view = GraphViewBuilder.Build(graph);
 
-        Assert.Single(view.Nodes);
-        Assert.Equal("Inner", view.Nodes[0].Label);
+        var typeNode = Assert.Single(view.Nodes.Where(node => node.Id == "Sample.Outer.Inner"));
+        Assert.Equal("Inner", typeNode.Label);
+        Assert.Equal("type", typeNode.NodeKind);
     }
 
     [Fact]
-    public void ノード情報とメンバーノードを生成できる()
+    public void ノード情報とメンバーノードと集約ノードを生成できる()
     {
-        var tempFile = Path.Combine(Path.GetTempPath(), $"depsphere-methods-{Guid.NewGuid():N}.cs");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"depsphere-methods-{Guid.NewGuid():N}");
+        var projectDir = Path.Combine(tempRoot, "SampleProject");
+        Directory.CreateDirectory(projectDir);
+        var tempFile = Path.Combine(projectDir, "Impl.cs");
+        var tempCsproj = Path.Combine(projectDir, "SampleProject.csproj");
+        File.WriteAllText(tempCsproj, "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
         File.WriteAllText(
             tempFile,
             """
-            namespace Sample;
+            namespace Sample.Domain;
 
             public class Impl
             {
+                private int _counter;
+                public event EventHandler? Changed;
                 public string Name { get; set; } = string.Empty;
                 public Impl() { }
                 public void Execute() { }
-                private int Compute() => 1;
+                private int Compute() => _counter;
+                public System.Text.StringBuilder BuildBuffer() => new();
             }
             """);
 
@@ -89,41 +99,52 @@ public class GraphViewBuilderTests
                 new[]
                 {
                     new DependencyNode(
-                        "Sample.Impl",
+                        "Sample.Domain.Impl",
                         new TypeMetrics(1, 1, 1, 1, 1, 1, 0.5))
                     {
-                        Location = new SourceLocation(tempFile, 3, 1, 8, 2)
+                        Location = new SourceLocation(tempFile, 3, 1, 12, 2)
                     }
                 },
                 Array.Empty<DependencyEdge>());
 
             var view = GraphViewBuilder.Build(graph);
 
-            var classNode = Assert.Single(view.Nodes.Where(node => node.Id == "Sample.Impl"));
+            var classNode = Assert.Single(view.Nodes.Where(node => node.Id == "Sample.Domain.Impl"));
             Assert.Equal("type", classNode.NodeKind);
-            Assert.Equal(new[] { "Compute", "Execute", "Impl" }, classNode.MethodNames);
+            Assert.Equal(new[] { "BuildBuffer", "Compute", "Execute", "Impl" }, classNode.MethodNames);
             Assert.Equal(new[] { "Name" }, classNode.PropertyNames);
+            Assert.Equal(new[] { "_counter" }, classNode.FieldNames);
+            Assert.Equal(new[] { "Changed" }, classNode.EventNames);
 
             var memberNodes = view.Nodes
-                .Where(node => node.OwnerNodeId == "Sample.Impl")
+                .Where(node => node.OwnerNodeId == "Sample.Domain.Impl")
                 .OrderBy(node => node.Id, StringComparer.Ordinal)
                 .ToArray();
-            Assert.Equal(4, memberNodes.Length);
+            Assert.Equal(7, memberNodes.Length);
             Assert.Contains(memberNodes, node => node.NodeKind == "method" && node.Label == "Compute()");
             Assert.Contains(memberNodes, node => node.NodeKind == "method" && node.Label == "Execute()");
             Assert.Contains(memberNodes, node => node.NodeKind == "method" && node.Label == "Impl()");
+            Assert.Contains(memberNodes, node => node.NodeKind == "method" && node.Label == "BuildBuffer()");
             Assert.Contains(memberNodes, node => node.NodeKind == "property" && node.Label == "Name");
+            Assert.Contains(memberNodes, node => node.NodeKind == "field" && node.Label == "_counter");
+            Assert.Contains(memberNodes, node => node.NodeKind == "event" && node.Label == "Changed event");
 
             var memberEdges = view.Edges
-                .Where(edge => edge.From == "Sample.Impl" && edge.Kind == "member")
+                .Where(edge => edge.From == "Sample.Domain.Impl" && edge.Kind == "member")
                 .ToArray();
             Assert.Equal(memberNodes.Length, memberEdges.Length);
+
+            Assert.Contains(view.Nodes, node => node.NodeKind == "project" && node.Label == "SampleProject");
+            Assert.Contains(view.Nodes, node => node.NodeKind == "namespace" && node.Label == "Sample.Domain");
+            Assert.Contains(view.Nodes, node => node.NodeKind == "file" && node.Label == "Impl.cs");
+            Assert.Contains(view.Nodes, node => node.NodeKind == "external" && node.Label == "ext:System");
+            Assert.Contains(view.Edges, edge => edge.From == "Sample.Domain.Impl" && edge.Kind == "external");
         }
         finally
         {
-            if (File.Exists(tempFile))
+            if (Directory.Exists(tempRoot))
             {
-                File.Delete(tempFile);
+                Directory.Delete(tempRoot, recursive: true);
             }
         }
     }

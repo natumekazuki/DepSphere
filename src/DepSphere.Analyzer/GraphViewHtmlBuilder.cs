@@ -102,6 +102,47 @@ public static class GraphViewHtmlBuilder
       font-size: 12px;
       cursor: pointer;
     }
+    #kind-filter {
+      margin-top: 10px;
+    }
+    #kind-filter-label {
+      margin-bottom: 4px;
+      color: #cbd5e1;
+    }
+    #kind-filter-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 8px;
+    }
+    .kind-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .kind-item input {
+      margin: 0;
+    }
+    .kind-item span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #kind-filter-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    #kind-filter-actions button {
+      flex: 1;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(30, 41, 59, 0.85);
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 11px;
+      cursor: pointer;
+    }
     #filter-status {
       margin-top: 10px;
       color: #cbd5e1;
@@ -167,8 +208,16 @@ public static class GraphViewHtmlBuilder
         <input id="spread-scale" type="range" min="0.6" max="2.6" step="0.1" value="1.0" />
       </div>
       <div id="search-wrap">
-        <input id="search-input" type="text" placeholder="クラス名検索 (Ctrl+F)" />
+        <input id="search-input" type="text" placeholder="ノード名検索 (Ctrl+F)" />
         <button id="search-button" type="button">検索</button>
+      </div>
+      <div id="kind-filter">
+        <div id="kind-filter-label">ノード種別フィルタ</div>
+        <div id="kind-filter-list"></div>
+        <div id="kind-filter-actions">
+          <button id="kind-filter-all" type="button">全選択</button>
+          <button id="kind-filter-reset" type="button">型中心</button>
+        </div>
       </div>
       <div class="toolbar">
         <button id="history-back" type="button" disabled>戻る</button>
@@ -211,6 +260,9 @@ public static class GraphViewHtmlBuilder
     const filterStatus = document.getElementById('filter-status');
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
+    const kindFilterList = document.getElementById('kind-filter-list');
+    const kindFilterAllButton = document.getElementById('kind-filter-all');
+    const kindFilterResetButton = document.getElementById('kind-filter-reset');
     let isOverlayExpanded = true;
     let isNodeInfoExpanded = true;
 
@@ -255,6 +307,20 @@ public static class GraphViewHtmlBuilder
     const historyMax = 80;
     let historyIndex = -1;
     let isApplyingHistory = false;
+    const kindOrder = ['project', 'namespace', 'file', 'type', 'method', 'property', 'field', 'event', 'external'];
+    const kindLabels = {
+      project: 'Project',
+      namespace: 'Namespace',
+      file: 'File',
+      type: 'Class',
+      method: 'Method',
+      property: 'Property',
+      field: 'Field',
+      event: 'Event',
+      external: 'External'
+    };
+    const activeNodeKinds = new Set(kindOrder);
+    const kindCheckboxMap = new Map();
 
     function setPanelExpanded(panel, content, toggleButton, isExpanded, collapseLabel, expandLabel) {
       if (!panel || !content || !toggleButton) {
@@ -286,6 +352,110 @@ public static class GraphViewHtmlBuilder
     function toggleNodeInfoPanelExpanded() {
       isNodeInfoExpanded = !isNodeInfoExpanded;
       applyNodeInfoPanelExpanded();
+    }
+
+    function normalizeNodeKind(kind) {
+      if (!kind) {
+        return 'type';
+      }
+
+      const normalized = String(kind).toLowerCase();
+      return kindOrder.includes(normalized) ? normalized : 'type';
+    }
+
+    function isNodeKindVisible(kind) {
+      return activeNodeKinds.has(normalizeNodeKind(kind));
+    }
+
+    function updateKindFilterButtons() {
+      if (!kindFilterAllButton || !kindFilterResetButton) {
+        return;
+      }
+
+      kindFilterAllButton.disabled = activeNodeKinds.size === kindOrder.length;
+      kindFilterResetButton.disabled =
+        activeNodeKinds.size === 3
+        && activeNodeKinds.has('project')
+        && activeNodeKinds.has('namespace')
+        && activeNodeKinds.has('type');
+    }
+
+    function syncKindCheckboxes() {
+      kindCheckboxMap.forEach((item, kind) => {
+        item.checked = activeNodeKinds.has(kind);
+      });
+      updateKindFilterButtons();
+    }
+
+    function setKindEnabled(kind, enabled, applyVisual = true) {
+      const normalized = normalizeNodeKind(kind);
+      if (enabled) {
+        activeNodeKinds.add(normalized);
+      } else {
+        activeNodeKinds.delete(normalized);
+      }
+
+      if (activeNodeKinds.size === 0) {
+        activeNodeKinds.add('type');
+      }
+
+      syncKindCheckboxes();
+      if (applyVisual) {
+        applyVisualSettings();
+      }
+    }
+
+    function resetKindFilterToTypeFocused() {
+      activeNodeKinds.clear();
+      activeNodeKinds.add('project');
+      activeNodeKinds.add('namespace');
+      activeNodeKinds.add('type');
+      syncKindCheckboxes();
+      applyVisualSettings();
+    }
+
+    function selectAllKinds() {
+      activeNodeKinds.clear();
+      kindOrder.forEach((kind) => activeNodeKinds.add(kind));
+      syncKindCheckboxes();
+      applyVisualSettings();
+    }
+
+    function initializeKindFilter() {
+      if (!kindFilterList) {
+        return;
+      }
+
+      kindFilterList.innerHTML = '';
+      kindOrder.forEach((kind) => {
+        const item = document.createElement('label');
+        item.className = 'kind-item';
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = activeNodeKinds.has(kind);
+        input.addEventListener('change', () => {
+          setKindEnabled(kind, input.checked);
+        });
+
+        const text = document.createElement('span');
+        text.textContent = kindLabels[kind] || kind;
+
+        item.appendChild(input);
+        item.appendChild(text);
+        kindFilterList.appendChild(item);
+        kindCheckboxMap.set(kind, input);
+      });
+
+      if (kindFilterAllButton) {
+        kindFilterAllButton.addEventListener('click', selectAllKinds);
+      }
+
+      if (kindFilterResetButton) {
+        kindFilterResetButton.addEventListener('click', resetKindFilterToTypeFocused);
+      }
+
+      syncKindCheckboxes();
     }
 
     function hexColor(color) {
@@ -438,6 +608,8 @@ public static class GraphViewHtmlBuilder
 
       const methods = Array.isArray(node.methodNames) ? node.methodNames : [];
       const properties = Array.isArray(node.propertyNames) ? node.propertyNames : [];
+      const fields = Array.isArray(node.fieldNames) ? node.fieldNames : [];
+      const events = Array.isArray(node.eventNames) ? node.eventNames : [];
       const nodeKind = node.nodeKind || 'type';
       const ownerNodeId = node.ownerNodeId || node.id;
       const methodText = methods.length > 0
@@ -446,13 +618,21 @@ public static class GraphViewHtmlBuilder
       const propertyText = properties.length > 0
         ? properties.join('\n')
         : '(プロパティ情報なし)';
+      const fieldText = fields.length > 0
+        ? fields.join('\n')
+        : '(フィールド情報なし)';
+      const eventText = events.length > 0
+        ? events.join('\n')
+        : '(イベント情報なし)';
 
       infoBody.textContent =
         `Kind: ${nodeKind}\n` +
         `Class: ${ownerNodeId}\n` +
         `Label: ${node.label || node.id}\n` +
         `Methods:\n${methodText}\n` +
-        `Properties:\n${propertyText}`;
+        `Properties:\n${propertyText}\n` +
+        `Fields:\n${fieldText}\n` +
+        `Events:\n${eventText}`;
     }
 
     function refreshEdges() {
@@ -461,8 +641,7 @@ public static class GraphViewHtmlBuilder
         const to = nodeMap.get(item.to);
         if (!from || !to) return;
 
-        const visible = !visibleNodeIds
-          || (visibleNodeIds.has(item.from) && visibleNodeIds.has(item.to));
+        const visible = from.visible && to.visible;
         item.line.visible = visible;
         item.line.geometry.setFromPoints([from.position.clone(), to.position.clone()]);
       });
@@ -475,7 +654,9 @@ public static class GraphViewHtmlBuilder
       nodeMeshes.forEach((mesh) => {
         const id = mesh.userData.nodeId;
         const basePos = basePositions.get(id);
-        const visible = !visibleNodeIds || visibleNodeIds.has(id);
+        const kindVisible = isNodeKindVisible(mesh.userData.nodeKind);
+        const graphVisible = !visibleNodeIds || visibleNodeIds.has(id);
+        const visible = kindVisible && graphVisible;
         mesh.visible = visible;
 
         if (basePos) {
@@ -528,9 +709,14 @@ public static class GraphViewHtmlBuilder
       }
 
       const nodeKind = (mesh.userData.nodeKind || '').toLowerCase();
-      if (nodeKind === 'method' || nodeKind === 'property') {
+      if (nodeKind === 'method' || nodeKind === 'property' || nodeKind === 'field' || nodeKind === 'event') {
         const visibleCountForMembers = visibleNodeIds ? visibleNodeIds.size : nodes.length;
-        return visibleCountForMembers <= 18;
+        return visibleCountForMembers <= 22;
+      }
+
+      if (nodeKind === 'project' || nodeKind === 'namespace' || nodeKind === 'file' || nodeKind === 'external') {
+        const visibleCountForStructures = visibleNodeIds ? visibleNodeIds.size : nodes.length;
+        return visibleCountForStructures <= 120;
       }
 
       const level = (mesh.userData.level || '').toLowerCase();
@@ -598,10 +784,11 @@ public static class GraphViewHtmlBuilder
       const selected = state.selectedNodeId || '';
       const root = state.filterRootNodeId || '';
       const visible = state.visibleNodeIds ? state.visibleNodeIds.join('|') : '*';
+      const kinds = state.activeNodeKinds ? state.activeNodeKinds.join('|') : '';
       const camera = state.cameraState
         ? `${state.cameraState.position.join(',')}|${state.cameraState.target.join(',')}`
         : '';
-      return `${selected}#${root}#${visible}#${camera}`;
+      return `${selected}#${root}#${visible}#${kinds}#${camera}`;
     }
 
     function captureUiState() {
@@ -609,6 +796,7 @@ public static class GraphViewHtmlBuilder
         selectedNodeId,
         filterRootNodeId,
         visibleNodeIds: visibleNodeIds ? Array.from(visibleNodeIds).sort() : null,
+        activeNodeKinds: Array.from(activeNodeKinds).sort(),
         cameraState: cameraControl.captureState()
       };
 
@@ -623,7 +811,14 @@ public static class GraphViewHtmlBuilder
         hoveredNodeId = selectedNodeId;
         filterRootNodeId = state.filterRootNodeId || null;
         visibleNodeIds = state.visibleNodeIds ? new Set(state.visibleNodeIds) : null;
+        activeNodeKinds.clear();
+        const stateKinds = Array.isArray(state.activeNodeKinds) ? state.activeNodeKinds : kindOrder;
+        stateKinds.forEach((kind) => activeNodeKinds.add(normalizeNodeKind(kind)));
+        if (activeNodeKinds.size === 0) {
+          activeNodeKinds.add('type');
+        }
 
+        syncKindCheckboxes();
         updateFilterButtonState();
         applyVisualSettings();
         cameraControl.applyState(state.cameraState);
@@ -676,9 +871,10 @@ public static class GraphViewHtmlBuilder
 
     function updateFilterStatus() {
       const totalCount = nodes.length;
-      const visibleCount = visibleNodeIds ? visibleNodeIds.size : totalCount;
+      const visibleCount = nodeMeshes.reduce((count, mesh) => count + (mesh.visible ? 1 : 0), 0);
       const rootText = filterRootNodeId ? ` | 起点: ${filterRootNodeId}` : '';
-      filterStatus.textContent = `表示中: ${visibleCount}/${totalCount}${rootText}`;
+      const kindText = ` | 種別: ${activeNodeKinds.size}/${kindOrder.length}`;
+      filterStatus.textContent = `表示中: ${visibleCount}/${totalCount}${rootText}${kindText}`;
     }
 
     function getVisiblePoints() {
@@ -731,6 +927,12 @@ public static class GraphViewHtmlBuilder
       const target = nodeMap.get(nodeId);
       if (!target) {
         return false;
+      }
+
+      const targetKind = normalizeNodeKind(target.userData.nodeKind);
+      if (!activeNodeKinds.has(targetKind)) {
+        activeNodeKinds.add(targetKind);
+        syncKindCheckboxes();
       }
 
       selectedNodeId = nodeId;
@@ -894,6 +1096,7 @@ public static class GraphViewHtmlBuilder
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    initializeKindFilter();
     applyOverlayPanelExpanded();
     applyNodeInfoPanelExpanded();
     updateFilterButtonState();

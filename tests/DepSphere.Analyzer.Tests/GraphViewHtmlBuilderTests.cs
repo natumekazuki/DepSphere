@@ -61,6 +61,12 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("node-info-content", html);
         Assert.Contains("操作UIを折りたたむ", html);
         Assert.Contains("ノード情報を折りたたむ", html);
+        Assert.Contains("kind-filter-list", html);
+        Assert.Contains("kind-filter-all", html);
+        Assert.Contains("kind-filter-reset", html);
+        Assert.Contains("ノード種別フィルタ", html);
+        Assert.Contains("initializeKindFilter", html);
+        Assert.Contains("activeNodeKinds", html);
         Assert.Contains("▽", html);
         Assert.Contains("表示限定解除", html);
         Assert.Contains("Fit to View", html);
@@ -157,8 +163,12 @@ public class GraphViewHtmlBuilderTests
 
         Assert.Contains("node.methodNames", html);
         Assert.Contains("node.propertyNames", html);
+        Assert.Contains("node.fieldNames", html);
+        Assert.Contains("node.eventNames", html);
         Assert.Contains("Methods:", html);
         Assert.Contains("Properties:", html);
+        Assert.Contains("Fields:", html);
+        Assert.Contains("Events:", html);
         Assert.Contains("node-info-body", html);
     }
 

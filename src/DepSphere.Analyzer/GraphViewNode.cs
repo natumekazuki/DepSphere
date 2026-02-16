@@ -15,4 +15,6 @@ public sealed record GraphViewNode(
     public string? OwnerNodeId { get; init; }
     public IReadOnlyList<string> MethodNames { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> PropertyNames { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> FieldNames { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> EventNames { get; init; } = Array.Empty<string>();
 }
