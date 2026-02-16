@@ -76,6 +76,11 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("const edgeArrowGeometry = new THREE.ConeGeometry(1, 1, 10);", html);
         Assert.Contains("edgeLines.push({ from: edge.from, to: edge.to, line, arrow });", html);
         Assert.Contains("item.arrow.quaternion.setFromUnitVectors(edgeArrowUp, edgeDirection);", html);
+        Assert.Contains("const dragPlane = new THREE.Plane();", html);
+        Assert.Contains("function projectPointerToPlane(event, plane, target)", html);
+        Assert.Contains("raycaster.ray.intersectPlane(plane, target) !== null", html);
+        Assert.Contains("event.stopImmediatePropagation();", html);
+        Assert.Contains("basePositions.set(draggedNodeMesh.userData.nodeId", html);
         Assert.Contains("▽", html);
         Assert.Contains("表示限定解除", html);
         Assert.Contains("Fit to View", html);

@@ -810,16 +810,98 @@ public static class GraphViewHtmlBuilder
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const dragPlane = new THREE.Plane();
+    const dragPoint = new THREE.Vector3();
+    const dragOffset = new THREE.Vector3();
+    const dragPlaneNormal = new THREE.Vector3();
 
     let pointerDown = null;
     let pointerMoved = false;
+    let draggedNodeMesh = null;
+    let draggedPointerId = null;
+
+    function updatePointerFromEvent(event) {
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    }
+
+    function projectPointerToPlane(event, plane, target) {
+      updatePointerFromEvent(event);
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.ray.intersectPlane(plane, target) !== null;
+    }
 
     canvas.addEventListener('pointerdown', (event) => {
       pointerDown = { x: event.clientX, y: event.clientY, button: event.button };
       pointerMoved = false;
-    });
+
+      if (event.button !== 0) {
+        return;
+      }
+
+      const picked = pickNodeFromEvent(event);
+      if (!picked) {
+        return;
+      }
+
+      draggedNodeMesh = picked;
+      draggedPointerId = event.pointerId;
+
+      dragPlaneNormal.copy(camera.position).sub(picked.position);
+      if (dragPlaneNormal.lengthSq() <= 1e-8) {
+        dragPlaneNormal.set(0, 0, 1);
+      }
+      dragPlaneNormal.normalize();
+      dragPlane.setFromNormalAndCoplanarPoint(dragPlaneNormal, picked.position);
+
+      if (projectPointerToPlane(event, dragPlane, dragPoint)) {
+        dragOffset.copy(picked.position).sub(dragPoint);
+      } else {
+        dragOffset.set(0, 0, 0);
+      }
+
+      selectedNodeId = picked.userData.nodeId;
+      hoveredNodeId = picked.userData.nodeId;
+      updateNodeInfo(picked.userData.node);
+      applyVisualSettings();
+
+      if (canvas.setPointerCapture) {
+        canvas.setPointerCapture(event.pointerId);
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
 
     canvas.addEventListener('pointermove', (event) => {
+      if (draggedNodeMesh && (draggedPointerId === null || event.pointerId === draggedPointerId)) {
+        if (pointerDown) {
+          const dx = event.clientX - pointerDown.x;
+          const dy = event.clientY - pointerDown.y;
+          if ((dx * dx + dy * dy) > 25) {
+            pointerMoved = true;
+          }
+        }
+
+        if (projectPointerToPlane(event, dragPlane, dragPoint)) {
+          const nextPosition = dragPoint.clone().add(dragOffset);
+          if (nextPosition.distanceToSquared(draggedNodeMesh.position) > 1e-8) {
+            draggedNodeMesh.position.copy(nextPosition);
+            const spreadScale = Number(spreadScaleInput.value || '1');
+            const safeSpreadScale = Math.abs(spreadScale) <= 1e-8 ? 1 : spreadScale;
+            basePositions.set(draggedNodeMesh.userData.nodeId, nextPosition.clone().divideScalar(safeSpreadScale));
+            pointerMoved = true;
+            refreshEdges();
+            updateLabelLod();
+          }
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
       if (pointerDown) {
         const dx = event.clientX - pointerDown.x;
         const dy = event.clientY - pointerDown.y;
@@ -832,13 +914,41 @@ public static class GraphViewHtmlBuilder
 
       const hovered = pickNodeFromEvent(event);
       setHoveredNode(hovered ? hovered.userData.nodeId : null);
-    });
+    }, true);
 
-    canvas.addEventListener('pointerup', () => {
+    canvas.addEventListener('pointerup', (event) => {
+      if (draggedNodeMesh && (draggedPointerId === null || event.pointerId === draggedPointerId)) {
+        draggedNodeMesh = null;
+        draggedPointerId = null;
+        if (canvas.releasePointerCapture && event.pointerId !== undefined) {
+          try {
+            canvas.releasePointerCapture(event.pointerId);
+          } catch {
+            // no-op
+          }
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+
       pointerDown = null;
-    });
+    }, true);
+
+    canvas.addEventListener('pointercancel', (event) => {
+      if (draggedNodeMesh && (draggedPointerId === null || event.pointerId === draggedPointerId)) {
+        draggedNodeMesh = null;
+        draggedPointerId = null;
+      }
+
+      pointerDown = null;
+    }, true);
 
     canvas.addEventListener('pointerleave', () => {
+      if (draggedNodeMesh) {
+        return;
+      }
+
       setHoveredNode(null);
     });
 
@@ -1278,9 +1388,7 @@ public static class GraphViewHtmlBuilder
     }
 
     function pickNodeFromEvent(event) {
-      const rect = canvas.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      updatePointerFromEvent(event);
       raycaster.setFromCamera(pointer, camera);
 
       const hits = raycaster.intersectObjects(nodeMeshes, false);
