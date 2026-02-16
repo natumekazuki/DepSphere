@@ -277,6 +277,7 @@ public static class GraphViewHtmlBuilder
       </div>
       <div class="toolbar">
         <button id="fit-view" type="button">Fit to View</button>
+        <button id="auto-spread" type="button">自動拡散</button>
         <button id="clear-filter" type="button" disabled>表示限定解除</button>
       </div>
       <div id="filter-status">表示中: 0/0</div>
@@ -308,6 +309,7 @@ public static class GraphViewHtmlBuilder
     const historyBackButton = document.getElementById('history-back');
     const historyForwardButton = document.getElementById('history-forward');
     const fitViewButton = document.getElementById('fit-view');
+    const autoSpreadButton = document.getElementById('auto-spread');
     const clearFilterButton = document.getElementById('clear-filter');
     const filterStatus = document.getElementById('filter-status');
     const searchInput = document.getElementById('search-input');
@@ -386,6 +388,8 @@ public static class GraphViewHtmlBuilder
     const projectCheckboxMap = new Map();
     const hierarchicalEdgeKinds = new Set(['contains', 'member', 'external']);
     const projectOwnedNodeIds = buildProjectOwnedNodeIndex();
+    const defaultSpreadScaleMin = Number(spreadScaleInput.min || '0.6');
+    const defaultSpreadScaleMax = Number(spreadScaleInput.max || '2.6');
 
     function setPanelExpanded(panel, content, toggleButton, isExpanded, collapseLabel, expandLabel) {
       if (!panel || !content || !toggleButton) {
@@ -590,6 +594,13 @@ public static class GraphViewHtmlBuilder
       }
 
       return false;
+    }
+
+    function isNodeVisibleByActiveFilters(nodeId, nodeKind) {
+      const kindVisible = isNodeKindVisible(nodeKind);
+      const projectVisible = isNodeProjectVisible(nodeId, nodeKind);
+      const graphVisible = !visibleNodeIds || visibleNodeIds.has(nodeId);
+      return kindVisible && projectVisible && graphVisible;
     }
 
     function updateProjectFilterButtons() {
@@ -1050,10 +1061,7 @@ public static class GraphViewHtmlBuilder
       nodeMeshes.forEach((mesh) => {
         const id = mesh.userData.nodeId;
         const basePos = basePositions.get(id);
-        const kindVisible = isNodeKindVisible(mesh.userData.nodeKind);
-        const projectVisible = isNodeProjectVisible(id, mesh.userData.nodeKind);
-        const graphVisible = !visibleNodeIds || visibleNodeIds.has(id);
-        const visible = kindVisible && projectVisible && graphVisible;
+        const visible = isNodeVisibleByActiveFilters(id, mesh.userData.nodeKind);
         mesh.visible = visible;
 
         if (basePos) {
@@ -1301,6 +1309,63 @@ public static class GraphViewHtmlBuilder
       return points;
     }
 
+    function ensureSpreadScaleMax(targetSpreadScale) {
+      const target = Number(targetSpreadScale || spreadScaleInput.value || '1');
+      if (!Number.isFinite(target)) {
+        return;
+      }
+
+      const currentMax = Number(spreadScaleInput.max || defaultSpreadScaleMax);
+      if (target <= currentMax) {
+        return;
+      }
+
+      const nextMax = Math.max(defaultSpreadScaleMax, Math.ceil((target + 0.4) * 10) / 10);
+      spreadScaleInput.max = nextMax.toFixed(1);
+    }
+
+    function computeRecommendedSpreadScale() {
+      const visibleNodeIdsForSpread = new Set();
+      nodeMeshes.forEach((mesh) => {
+        if (isNodeVisibleByActiveFilters(mesh.userData.nodeId, mesh.userData.nodeKind)) {
+          visibleNodeIdsForSpread.add(mesh.userData.nodeId);
+        }
+      });
+
+      const nodeCount = visibleNodeIdsForSpread.size;
+      if (nodeCount <= 1) {
+        return defaultSpreadScaleMin;
+      }
+
+      let edgeCount = 0;
+      edgeLines.forEach((edge) => {
+        if (visibleNodeIdsForSpread.has(edge.from) && visibleNodeIdsForSpread.has(edge.to)) {
+          edgeCount += 1;
+        }
+      });
+
+      const possibleEdges = Math.max(1, nodeCount * (nodeCount - 1));
+      const density = Math.min(1, edgeCount / possibleEdges);
+      const edgePerNode = edgeCount / Math.max(1, nodeCount);
+
+      const nodePressure = Math.pow(Math.max(1, nodeCount) / 32, 0.65);
+      const densityBoost = 1 + Math.min(4.2, density * 12);
+      const edgeBoost = 1 + Math.min(3, edgePerNode / 18);
+
+      const recommended = nodePressure * densityBoost * edgeBoost;
+      return Math.max(defaultSpreadScaleMin, Math.min(45, recommended));
+    }
+
+    function applyAutoSpread() {
+      const recommendedSpreadScale = computeRecommendedSpreadScale();
+      ensureSpreadScaleMax(recommendedSpreadScale);
+      const rounded = Math.round(recommendedSpreadScale * 10) / 10;
+      spreadScaleInput.value = String(rounded);
+      applyVisualSettings();
+      fitVisibleNodes(false);
+      pushHistoryState();
+    }
+
     function fitVisibleNodes(recordHistory = true) {
       const points = getVisiblePoints();
       if (points.length === 0) {
@@ -1459,6 +1524,7 @@ public static class GraphViewHtmlBuilder
     historyBackButton.addEventListener('click', () => navigateHistory(-1));
     historyForwardButton.addEventListener('click', () => navigateHistory(1));
     fitViewButton.addEventListener('click', fitVisibleNodes);
+    autoSpreadButton.addEventListener('click', applyAutoSpread);
     clearFilterButton.addEventListener('click', clearNodeFilter);
     searchButton.addEventListener('click', runSearch);
     searchInput.addEventListener('keydown', (event) => {

@@ -50,6 +50,7 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("spread-scale", html);
         Assert.Contains("clear-filter", html);
         Assert.Contains("fit-view", html);
+        Assert.Contains("auto-spread", html);
         Assert.Contains("history-back", html);
         Assert.Contains("history-forward", html);
         Assert.Contains("filter-status", html);
@@ -81,6 +82,9 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("raycaster.ray.intersectPlane(plane, target) !== null", html);
         Assert.Contains("event.stopImmediatePropagation();", html);
         Assert.Contains("basePositions.set(draggedNodeMesh.userData.nodeId", html);
+        Assert.Contains("function computeRecommendedSpreadScale()", html);
+        Assert.Contains("function applyAutoSpread()", html);
+        Assert.Contains("autoSpreadButton.addEventListener('click', applyAutoSpread);", html);
         Assert.Contains("▽", html);
         Assert.Contains("表示限定解除", html);
         Assert.Contains("Fit to View", html);
