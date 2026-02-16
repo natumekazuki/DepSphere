@@ -19,35 +19,44 @@ public static class GraphViewHtmlBuilder
   <style>
     html, body { margin: 0; padding: 0; overflow: hidden; background: #0b1220; }
     #dep-graph-canvas { width: 100vw; height: 100vh; display: block; }
-    .overlay-toggle {
-      position: fixed;
-      top: 12px;
-      z-index: 20;
-      border: 1px solid rgba(148, 163, 184, 0.45);
-      background: rgba(15, 23, 42, 0.88);
-      color: #e2e8f0;
-      border-radius: 8px;
-      padding: 6px 10px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    #overlay-toggle { left: 12px; }
-    #node-info-toggle { right: 12px; }
     #overlay {
-      position: fixed; top: 46px; left: 12px; color: #e2e8f0;
+      position: fixed; top: 12px; left: 12px; color: #e2e8f0;
       background: rgba(15, 23, 42, 0.82); padding: 10px 12px; border-radius: 10px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
       border: 1px solid rgba(148, 163, 184, 0.25);
       min-width: 240px;
       z-index: 10;
     }
-    #overlay h1 {
-      margin: 0 0 8px 0; font-size: 13px; font-weight: 600;
+    .overlay-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    #overlay .overlay-header {
+      margin-bottom: 8px;
+    }
+    #overlay .overlay-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
     }
     #overlay .control { margin-top: 8px; }
     #overlay label { display: block; margin-bottom: 2px; color: #cbd5e1; }
     #overlay input[type='range'] { width: 100%; }
+    .overlay-icon-toggle {
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(30, 41, 59, 0.85);
+      color: #e2e8f0;
+      border-radius: 6px;
+      width: 24px;
+      height: 24px;
+      line-height: 1;
+      padding: 0;
+      font-size: 13px;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
     #overlay .toolbar {
       display: flex;
       gap: 6px;
@@ -113,7 +122,7 @@ public static class GraphViewHtmlBuilder
       cursor: default;
     }
     #node-info {
-      position: fixed; right: 12px; top: 46px; color: #e2e8f0;
+      position: fixed; right: 12px; top: 12px; color: #e2e8f0;
       background: rgba(2, 6, 23, 0.82); padding: 10px 12px; border-radius: 10px;
       border: 1px solid rgba(148, 163, 184, 0.25);
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
@@ -121,48 +130,65 @@ public static class GraphViewHtmlBuilder
       white-space: pre-wrap;
       z-index: 10;
     }
-    #node-info .title { font-weight: 600; margin-bottom: 6px; }
-    .overlay-hidden {
+    #node-info .title {
+      font-weight: 600;
+      margin: 0;
+    }
+    #node-info .overlay-header {
+      margin-bottom: 6px;
+    }
+    .overlay-content-hidden {
       display: none;
+    }
+    .overlay-collapsed {
+      min-width: 0;
     }
   </style>
 </head>
 <body>
   <canvas id="dep-graph-canvas"></canvas>
-  <button id="overlay-toggle" class="overlay-toggle" type="button" aria-controls="overlay" aria-expanded="true">操作UIを隠す</button>
   <div id="overlay">
-    <h1>DepSphere 3D Graph</h1>
-    <div>シングルクリック: 接続ノードに限定</div>
-    <div>ダブルクリック: コード表示</div>
-    <div>ホバー: ノード強調</div>
-    <div>ラベルLOD: 遠景は重要ノード中心</div>
-    <div>右ドラッグ: 回転 / 左ドラッグ: 平行移動 / ホイール: ズーム</div>
-    <div class="control">
-      <label for="node-scale">ノード倍率</label>
-      <input id="node-scale" type="range" min="0.6" max="2.4" step="0.1" value="1.0" />
+    <div class="overlay-header">
+      <h1 class="overlay-title">DepSphere 3D Graph</h1>
+      <button id="overlay-toggle" class="overlay-icon-toggle" type="button" aria-controls="overlay-body" aria-expanded="true" aria-label="操作UIを折りたたむ">▽</button>
     </div>
-    <div class="control">
-      <label for="spread-scale">距離倍率</label>
-      <input id="spread-scale" type="range" min="0.6" max="2.6" step="0.1" value="1.0" />
+    <div id="overlay-body">
+      <div>シングルクリック: 接続ノードに限定</div>
+      <div>ダブルクリック: コード表示</div>
+      <div>ホバー: ノード強調</div>
+      <div>ラベルLOD: 遠景は重要ノード中心</div>
+      <div>右ドラッグ: 回転 / 左ドラッグ: 平行移動 / ホイール: ズーム</div>
+      <div class="control">
+        <label for="node-scale">ノード倍率</label>
+        <input id="node-scale" type="range" min="0.6" max="2.4" step="0.1" value="1.0" />
+      </div>
+      <div class="control">
+        <label for="spread-scale">距離倍率</label>
+        <input id="spread-scale" type="range" min="0.6" max="2.6" step="0.1" value="1.0" />
+      </div>
+      <div id="search-wrap">
+        <input id="search-input" type="text" placeholder="クラス名検索 (Ctrl+F)" />
+        <button id="search-button" type="button">検索</button>
+      </div>
+      <div class="toolbar">
+        <button id="history-back" type="button" disabled>戻る</button>
+        <button id="history-forward" type="button" disabled>進む</button>
+      </div>
+      <div class="toolbar">
+        <button id="fit-view" type="button">Fit to View</button>
+        <button id="clear-filter" type="button" disabled>表示限定解除</button>
+      </div>
+      <div id="filter-status">表示中: 0/0</div>
     </div>
-    <div id="search-wrap">
-      <input id="search-input" type="text" placeholder="クラス名検索 (Ctrl+F)" />
-      <button id="search-button" type="button">検索</button>
-    </div>
-    <div class="toolbar">
-      <button id="history-back" type="button" disabled>戻る</button>
-      <button id="history-forward" type="button" disabled>進む</button>
-    </div>
-    <div class="toolbar">
-      <button id="fit-view" type="button">Fit to View</button>
-      <button id="clear-filter" type="button" disabled>表示限定解除</button>
-    </div>
-    <div id="filter-status">表示中: 0/0</div>
   </div>
-  <button id="node-info-toggle" class="overlay-toggle" type="button" aria-controls="node-info" aria-expanded="true">ノード情報を隠す</button>
   <div id="node-info">
-    <div class="title">ノード情報</div>
-    <div id="node-info-body">ノードをクリックするとクラス名とメソッド名を表示します。</div>
+    <div class="overlay-header">
+      <div class="title">ノード情報</div>
+      <button id="node-info-toggle" class="overlay-icon-toggle" type="button" aria-controls="node-info-content" aria-expanded="true" aria-label="ノード情報を折りたたむ">▽</button>
+    </div>
+    <div id="node-info-content">
+      <div id="node-info-body">ノードをクリックするとクラス名とメソッド名を表示します。</div>
+    </div>
   </div>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
   <script>
@@ -170,8 +196,10 @@ public static class GraphViewHtmlBuilder
 
     const canvas = document.getElementById('dep-graph-canvas');
     const overlayPanel = document.getElementById('overlay');
+    const overlayBody = document.getElementById('overlay-body');
     const overlayToggleButton = document.getElementById('overlay-toggle');
     const nodeInfoPanel = document.getElementById('node-info');
+    const nodeInfoContent = document.getElementById('node-info-content');
     const nodeInfoToggleButton = document.getElementById('node-info-toggle');
     const infoBody = document.getElementById('node-info-body');
     const nodeScaleInput = document.getElementById('node-scale');
@@ -183,8 +211,8 @@ public static class GraphViewHtmlBuilder
     const filterStatus = document.getElementById('filter-status');
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
-    let isOverlayVisible = true;
-    let isNodeInfoVisible = true;
+    let isOverlayExpanded = true;
+    let isNodeInfoExpanded = true;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1220);
@@ -228,32 +256,36 @@ public static class GraphViewHtmlBuilder
     let historyIndex = -1;
     let isApplyingHistory = false;
 
-    function setPanelVisibility(panel, toggleButton, isVisible, hideLabel, showLabel) {
-      if (!panel || !toggleButton) {
+    function setPanelExpanded(panel, content, toggleButton, isExpanded, collapseLabel, expandLabel) {
+      if (!panel || !content || !toggleButton) {
         return;
       }
 
-      panel.classList.toggle('overlay-hidden', !isVisible);
-      toggleButton.textContent = isVisible ? hideLabel : showLabel;
-      toggleButton.setAttribute('aria-expanded', isVisible ? 'true' : 'false');
+      panel.classList.toggle('overlay-collapsed', !isExpanded);
+      content.classList.toggle('overlay-content-hidden', !isExpanded);
+      toggleButton.textContent = isExpanded ? '▽' : '△';
+      toggleButton.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+      const label = isExpanded ? collapseLabel : expandLabel;
+      toggleButton.setAttribute('aria-label', label);
+      toggleButton.setAttribute('title', label);
     }
 
-    function applyOverlayPanelVisibility() {
-      setPanelVisibility(overlayPanel, overlayToggleButton, isOverlayVisible, '操作UIを隠す', '操作UIを表示');
+    function applyOverlayPanelExpanded() {
+      setPanelExpanded(overlayPanel, overlayBody, overlayToggleButton, isOverlayExpanded, '操作UIを折りたたむ', '操作UIを展開');
     }
 
-    function applyNodeInfoPanelVisibility() {
-      setPanelVisibility(nodeInfoPanel, nodeInfoToggleButton, isNodeInfoVisible, 'ノード情報を隠す', 'ノード情報を表示');
+    function applyNodeInfoPanelExpanded() {
+      setPanelExpanded(nodeInfoPanel, nodeInfoContent, nodeInfoToggleButton, isNodeInfoExpanded, 'ノード情報を折りたたむ', 'ノード情報を展開');
     }
 
-    function toggleOverlayPanelVisibility() {
-      isOverlayVisible = !isOverlayVisible;
-      applyOverlayPanelVisibility();
+    function toggleOverlayPanelExpanded() {
+      isOverlayExpanded = !isOverlayExpanded;
+      applyOverlayPanelExpanded();
     }
 
-    function toggleNodeInfoPanelVisibility() {
-      isNodeInfoVisible = !isNodeInfoVisible;
-      applyNodeInfoPanelVisibility();
+    function toggleNodeInfoPanelExpanded() {
+      isNodeInfoExpanded = !isNodeInfoExpanded;
+      applyNodeInfoPanelExpanded();
     }
 
     function hexColor(color) {
@@ -792,8 +824,8 @@ public static class GraphViewHtmlBuilder
 
     nodeScaleInput.addEventListener('input', applyVisualSettings);
     spreadScaleInput.addEventListener('input', applyVisualSettings);
-    overlayToggleButton.addEventListener('click', toggleOverlayPanelVisibility);
-    nodeInfoToggleButton.addEventListener('click', toggleNodeInfoPanelVisibility);
+    overlayToggleButton.addEventListener('click', toggleOverlayPanelExpanded);
+    nodeInfoToggleButton.addEventListener('click', toggleNodeInfoPanelExpanded);
     historyBackButton.addEventListener('click', () => navigateHistory(-1));
     historyForwardButton.addEventListener('click', () => navigateHistory(1));
     fitViewButton.addEventListener('click', fitVisibleNodes);
@@ -846,8 +878,8 @@ public static class GraphViewHtmlBuilder
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    applyOverlayPanelVisibility();
-    applyNodeInfoPanelVisibility();
+    applyOverlayPanelExpanded();
+    applyNodeInfoPanelExpanded();
     updateFilterButtonState();
     updateHistoryButtons();
     applyVisualSettings();

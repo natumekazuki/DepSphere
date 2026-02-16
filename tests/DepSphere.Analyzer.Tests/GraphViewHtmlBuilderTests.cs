@@ -56,8 +56,12 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("search-input", html);
         Assert.Contains("overlay-toggle", html);
         Assert.Contains("node-info-toggle", html);
-        Assert.Contains("操作UIを隠す", html);
-        Assert.Contains("ノード情報を隠す", html);
+        Assert.Contains("overlay-icon-toggle", html);
+        Assert.Contains("overlay-body", html);
+        Assert.Contains("node-info-content", html);
+        Assert.Contains("操作UIを折りたたむ", html);
+        Assert.Contains("ノード情報を折りたたむ", html);
+        Assert.Contains("▽", html);
         Assert.Contains("表示限定解除", html);
         Assert.Contains("Fit to View", html);
         Assert.Contains("戻る", html);
