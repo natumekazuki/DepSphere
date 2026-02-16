@@ -60,7 +60,7 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("overlay-body", html);
         Assert.Contains("node-info-content", html);
         Assert.Contains("操作UIを折りたたむ", html);
-        Assert.Contains("ノード情報を折りたたむ", html);
+        Assert.Contains("aria-expanded=\"false\" aria-label=\"ノード情報を展開\">△</button>", html);
         Assert.Contains("kind-filter-list", html);
         Assert.Contains("kind-filter-all", html);
         Assert.Contains("kind-filter-reset", html);

@@ -285,7 +285,7 @@ public static class GraphViewHtmlBuilder
   <div id="node-info">
     <div class="overlay-header">
       <div class="title">ノード情報</div>
-      <button id="node-info-toggle" class="overlay-icon-toggle" type="button" aria-controls="node-info-content" aria-expanded="true" aria-label="ノード情報を折りたたむ">▽</button>
+      <button id="node-info-toggle" class="overlay-icon-toggle" type="button" aria-controls="node-info-content" aria-expanded="false" aria-label="ノード情報を展開">△</button>
     </div>
     <div id="node-info-content">
       <div id="node-info-body">ノードをクリックするとクラス・メソッド・プロパティ情報を表示します。</div>
@@ -320,7 +320,7 @@ public static class GraphViewHtmlBuilder
     const projectFilterAllButton = document.getElementById('project-filter-all');
     const projectFilterNoneButton = document.getElementById('project-filter-none');
     let isOverlayExpanded = true;
-    let isNodeInfoExpanded = true;
+    let isNodeInfoExpanded = false;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1220);
