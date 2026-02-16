@@ -354,6 +354,8 @@ public static class GraphViewHtmlBuilder
     const basePositions = new Map();
     const adjacencyMap = new Map();
     const edgeLines = [];
+    const edgeArrowGeometry = new THREE.ConeGeometry(1, 1, 10);
+    const edgeArrowUp = new THREE.Vector3(0, 1, 0);
     let selectedNodeId = null;
     let hoveredNodeId = null;
     let visibleNodeIds = null;
@@ -786,8 +788,16 @@ public static class GraphViewHtmlBuilder
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
       const material = new THREE.LineBasicMaterial({ color: hexColor(edge.color), opacity: 0.68, transparent: true });
       const line = new THREE.Line(geometry, material);
+      const arrowMaterial = new THREE.MeshBasicMaterial({
+        color: hexColor(edge.color),
+        opacity: 0.9,
+        transparent: true,
+        depthWrite: false
+      });
+      const arrow = new THREE.Mesh(edgeArrowGeometry, arrowMaterial);
       scene.add(line);
-      edgeLines.push({ from: edge.from, to: edge.to, line });
+      scene.add(arrow);
+      edgeLines.push({ from: edge.from, to: edge.to, line, arrow });
     });
 
     function addAdjacent(sourceId, targetId) {
@@ -885,7 +895,41 @@ public static class GraphViewHtmlBuilder
 
         const visible = from.visible && to.visible;
         item.line.visible = visible;
-        item.line.geometry.setFromPoints([from.position.clone(), to.position.clone()]);
+        item.arrow.visible = visible;
+        if (!visible) {
+          return;
+        }
+
+        const edgeDirection = to.position.clone().sub(from.position);
+        const distance = edgeDirection.length();
+        if (distance <= 0.001) {
+          item.line.visible = false;
+          item.arrow.visible = false;
+          return;
+        }
+
+        edgeDirection.normalize();
+
+        const fromRadius = Math.max(1.2, (from.userData.baseRadius || 2) * (from.scale ? from.scale.x : 1));
+        const toRadius = Math.max(1.2, (to.userData.baseRadius || 2) * (to.scale ? to.scale.x : 1));
+        const arrowLength = Math.max(2.4, Math.min(7.2, distance * 0.18));
+        const arrowRadius = Math.max(0.9, Math.min(2.6, arrowLength * 0.42));
+
+        const lineStart = from.position.clone().addScaledVector(edgeDirection, fromRadius + 0.4);
+        const arrowTip = to.position.clone().addScaledVector(edgeDirection, -(toRadius + 0.6));
+        const lineEnd = arrowTip.clone().addScaledVector(edgeDirection, -Math.max(0.8, arrowLength * 0.95));
+
+        if (lineStart.distanceTo(lineEnd) <= 0.4) {
+          item.line.visible = false;
+          item.arrow.visible = false;
+          return;
+        }
+
+        item.line.geometry.setFromPoints([lineStart, lineEnd]);
+
+        item.arrow.position.copy(arrowTip).addScaledVector(edgeDirection, -(arrowLength * 0.5));
+        item.arrow.scale.set(arrowRadius, arrowLength, arrowRadius);
+        item.arrow.quaternion.setFromUnitVectors(edgeArrowUp, edgeDirection);
       });
     }
 
