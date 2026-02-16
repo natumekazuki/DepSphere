@@ -145,6 +145,7 @@ WeightScore =
   - ラベルLOD: 遠景では `Critical/Hotspot/選択/ホバー/起点` を優先表示し、近景または表示ノード数が少ない場合は広く表示
   - 検索ボックスでクラス名検索し、対象ノードへフォーカス
   - ノード種別フィルタ（Project/Namespace/File/Class/Method/Property/Field/Event/External）で表示対象を切り替えられる
+  - プロジェクトフィルタ（csprojチェックボックス）で選択したプロジェクト配下ノードのみ表示できる
   - ショートカット:
     - `F`: 選択ノードへフォーカス（未選択時は表示中全体へFit）
     - `Esc`: 表示限定解除

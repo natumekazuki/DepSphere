@@ -67,6 +67,12 @@ public class GraphViewHtmlBuilderTests
         Assert.Contains("ノード種別フィルタ", html);
         Assert.Contains("initializeKindFilter", html);
         Assert.Contains("activeNodeKinds", html);
+        Assert.Contains("project-filter-list", html);
+        Assert.Contains("project-filter-all", html);
+        Assert.Contains("project-filter-none", html);
+        Assert.Contains("プロジェクトフィルタ", html);
+        Assert.Contains("initializeProjectFilter", html);
+        Assert.Contains("activeProjectNodeIds", html);
         Assert.Contains("▽", html);
         Assert.Contains("表示限定解除", html);
         Assert.Contains("Fit to View", html);

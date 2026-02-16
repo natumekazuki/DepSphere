@@ -143,6 +143,50 @@ public static class GraphViewHtmlBuilder
       font-size: 11px;
       cursor: pointer;
     }
+    #project-filter {
+      margin-top: 10px;
+    }
+    #project-filter-label {
+      margin-bottom: 4px;
+      color: #cbd5e1;
+    }
+    #project-filter-list {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 4px;
+      max-height: 110px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .project-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .project-item input {
+      margin: 0;
+    }
+    .project-item span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #project-filter-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    #project-filter-actions button {
+      flex: 1;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(30, 41, 59, 0.85);
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 11px;
+      cursor: pointer;
+    }
     #filter-status {
       margin-top: 10px;
       color: #cbd5e1;
@@ -219,6 +263,14 @@ public static class GraphViewHtmlBuilder
           <button id="kind-filter-reset" type="button">型中心</button>
         </div>
       </div>
+      <div id="project-filter">
+        <div id="project-filter-label">プロジェクトフィルタ</div>
+        <div id="project-filter-list"></div>
+        <div id="project-filter-actions">
+          <button id="project-filter-all" type="button">全選択</button>
+          <button id="project-filter-none" type="button">全解除</button>
+        </div>
+      </div>
       <div class="toolbar">
         <button id="history-back" type="button" disabled>戻る</button>
         <button id="history-forward" type="button" disabled>進む</button>
@@ -263,6 +315,10 @@ public static class GraphViewHtmlBuilder
     const kindFilterList = document.getElementById('kind-filter-list');
     const kindFilterAllButton = document.getElementById('kind-filter-all');
     const kindFilterResetButton = document.getElementById('kind-filter-reset');
+    const projectFilterPanel = document.getElementById('project-filter');
+    const projectFilterList = document.getElementById('project-filter-list');
+    const projectFilterAllButton = document.getElementById('project-filter-all');
+    const projectFilterNoneButton = document.getElementById('project-filter-none');
     let isOverlayExpanded = true;
     let isNodeInfoExpanded = true;
 
@@ -321,6 +377,13 @@ public static class GraphViewHtmlBuilder
     };
     const activeNodeKinds = new Set(kindOrder);
     const kindCheckboxMap = new Map();
+    const projectNodeIds = nodes
+      .filter((node) => normalizeNodeKind(node.nodeKind) === 'project')
+      .map((node) => node.id);
+    const activeProjectNodeIds = new Set(projectNodeIds);
+    const projectCheckboxMap = new Map();
+    const hierarchicalEdgeKinds = new Set(['contains', 'member', 'external']);
+    const projectOwnedNodeIds = buildProjectOwnedNodeIndex();
 
     function setPanelExpanded(panel, content, toggleButton, isExpanded, collapseLabel, expandLabel) {
       if (!panel || !content || !toggleButton) {
@@ -456,6 +519,185 @@ public static class GraphViewHtmlBuilder
       }
 
       syncKindCheckboxes();
+    }
+
+    function buildProjectOwnedNodeIndex() {
+      const ownerMap = new Map();
+      if (projectNodeIds.length === 0) {
+        return ownerMap;
+      }
+
+      const outgoing = new Map();
+      edges.forEach((edge) => {
+        const kind = String(edge.kind || '').toLowerCase();
+        if (!hierarchicalEdgeKinds.has(kind)) {
+          return;
+        }
+
+        if (!outgoing.has(edge.from)) {
+          outgoing.set(edge.from, []);
+        }
+
+        outgoing.get(edge.from).push(edge.to);
+      });
+
+      projectNodeIds.forEach((projectId) => {
+        const queue = [projectId];
+        const visited = new Set([projectId]);
+        while (queue.length > 0) {
+          const current = queue.shift();
+          if (!ownerMap.has(current)) {
+            ownerMap.set(current, new Set());
+          }
+
+          ownerMap.get(current).add(projectId);
+          const targets = outgoing.get(current) || [];
+          targets.forEach((targetId) => {
+            if (visited.has(targetId)) {
+              return;
+            }
+
+            visited.add(targetId);
+            queue.push(targetId);
+          });
+        }
+      });
+
+      return ownerMap;
+    }
+
+    function isNodeProjectVisible(nodeId, nodeKind) {
+      if (projectNodeIds.length === 0) {
+        return true;
+      }
+
+      const normalizedKind = normalizeNodeKind(nodeKind);
+      if (normalizedKind === 'project') {
+        return activeProjectNodeIds.has(nodeId);
+      }
+
+      const owners = projectOwnedNodeIds.get(nodeId);
+      if (!owners || owners.size === 0) {
+        return activeProjectNodeIds.size === projectNodeIds.length;
+      }
+
+      for (const projectId of owners) {
+        if (activeProjectNodeIds.has(projectId)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function updateProjectFilterButtons() {
+      if (!projectFilterAllButton || !projectFilterNoneButton) {
+        return;
+      }
+
+      projectFilterAllButton.disabled = activeProjectNodeIds.size === projectNodeIds.length;
+      projectFilterNoneButton.disabled = activeProjectNodeIds.size === 0;
+    }
+
+    function syncProjectCheckboxes() {
+      projectCheckboxMap.forEach((input, projectId) => {
+        input.checked = activeProjectNodeIds.has(projectId);
+      });
+      updateProjectFilterButtons();
+    }
+
+    function setProjectEnabled(projectId, enabled, applyVisual = true) {
+      if (enabled) {
+        activeProjectNodeIds.add(projectId);
+      } else {
+        activeProjectNodeIds.delete(projectId);
+      }
+
+      syncProjectCheckboxes();
+      if (applyVisual) {
+        applyVisualSettings();
+      }
+    }
+
+    function selectAllProjects() {
+      activeProjectNodeIds.clear();
+      projectNodeIds.forEach((projectId) => activeProjectNodeIds.add(projectId));
+      syncProjectCheckboxes();
+      applyVisualSettings();
+    }
+
+    function clearAllProjects() {
+      activeProjectNodeIds.clear();
+      syncProjectCheckboxes();
+      applyVisualSettings();
+    }
+
+    function ensureProjectVisibilityForNode(nodeId) {
+      const owners = projectOwnedNodeIds.get(nodeId);
+      if (!owners || owners.size === 0) {
+        return false;
+      }
+
+      let changed = false;
+      owners.forEach((projectId) => {
+        if (!activeProjectNodeIds.has(projectId)) {
+          activeProjectNodeIds.add(projectId);
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        syncProjectCheckboxes();
+      }
+
+      return changed;
+    }
+
+    function initializeProjectFilter() {
+      if (!projectFilterPanel || !projectFilterList) {
+        return;
+      }
+
+      if (projectNodeIds.length === 0) {
+        projectFilterPanel.style.display = 'none';
+        return;
+      }
+
+      projectFilterPanel.style.display = '';
+      projectFilterList.innerHTML = '';
+
+      const projectNodes = nodes
+        .filter((node) => normalizeNodeKind(node.nodeKind) === 'project')
+        .sort((a, b) => String(a.label || a.id).localeCompare(String(b.label || b.id), 'ja'));
+      projectNodes.forEach((node) => {
+        const item = document.createElement('label');
+        item.className = 'project-item';
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = activeProjectNodeIds.has(node.id);
+        input.addEventListener('change', () => {
+          setProjectEnabled(node.id, input.checked);
+        });
+
+        const text = document.createElement('span');
+        text.textContent = String(node.label || node.id);
+
+        item.appendChild(input);
+        item.appendChild(text);
+        projectFilterList.appendChild(item);
+        projectCheckboxMap.set(node.id, input);
+      });
+
+      if (projectFilterAllButton) {
+        projectFilterAllButton.addEventListener('click', selectAllProjects);
+      }
+
+      if (projectFilterNoneButton) {
+        projectFilterNoneButton.addEventListener('click', clearAllProjects);
+      }
+
+      syncProjectCheckboxes();
     }
 
     function hexColor(color) {
@@ -655,8 +897,9 @@ public static class GraphViewHtmlBuilder
         const id = mesh.userData.nodeId;
         const basePos = basePositions.get(id);
         const kindVisible = isNodeKindVisible(mesh.userData.nodeKind);
+        const projectVisible = isNodeProjectVisible(id, mesh.userData.nodeKind);
         const graphVisible = !visibleNodeIds || visibleNodeIds.has(id);
-        const visible = kindVisible && graphVisible;
+        const visible = kindVisible && projectVisible && graphVisible;
         mesh.visible = visible;
 
         if (basePos) {
@@ -785,10 +1028,11 @@ public static class GraphViewHtmlBuilder
       const root = state.filterRootNodeId || '';
       const visible = state.visibleNodeIds ? state.visibleNodeIds.join('|') : '*';
       const kinds = state.activeNodeKinds ? state.activeNodeKinds.join('|') : '';
+      const projects = state.activeProjectNodeIds ? state.activeProjectNodeIds.join('|') : '';
       const camera = state.cameraState
         ? `${state.cameraState.position.join(',')}|${state.cameraState.target.join(',')}`
         : '';
-      return `${selected}#${root}#${visible}#${kinds}#${camera}`;
+      return `${selected}#${root}#${visible}#${kinds}#${projects}#${camera}`;
     }
 
     function captureUiState() {
@@ -797,6 +1041,7 @@ public static class GraphViewHtmlBuilder
         filterRootNodeId,
         visibleNodeIds: visibleNodeIds ? Array.from(visibleNodeIds).sort() : null,
         activeNodeKinds: Array.from(activeNodeKinds).sort(),
+        activeProjectNodeIds: Array.from(activeProjectNodeIds).sort(),
         cameraState: cameraControl.captureState()
       };
 
@@ -818,6 +1063,17 @@ public static class GraphViewHtmlBuilder
           activeNodeKinds.add('type');
         }
 
+        activeProjectNodeIds.clear();
+        const stateProjects = Array.isArray(state.activeProjectNodeIds)
+          ? state.activeProjectNodeIds
+          : projectNodeIds;
+        stateProjects.forEach((projectId) => {
+          if (projectNodeIds.includes(projectId)) {
+            activeProjectNodeIds.add(projectId);
+          }
+        });
+
+        syncProjectCheckboxes();
         syncKindCheckboxes();
         updateFilterButtonState();
         applyVisualSettings();
@@ -874,7 +1130,10 @@ public static class GraphViewHtmlBuilder
       const visibleCount = nodeMeshes.reduce((count, mesh) => count + (mesh.visible ? 1 : 0), 0);
       const rootText = filterRootNodeId ? ` | 起点: ${filterRootNodeId}` : '';
       const kindText = ` | 種別: ${activeNodeKinds.size}/${kindOrder.length}`;
-      filterStatus.textContent = `表示中: ${visibleCount}/${totalCount}${rootText}${kindText}`;
+      const projectText = projectNodeIds.length > 0
+        ? ` | プロジェクト: ${activeProjectNodeIds.size}/${projectNodeIds.length}`
+        : '';
+      filterStatus.textContent = `表示中: ${visibleCount}/${totalCount}${rootText}${kindText}${projectText}`;
     }
 
     function getVisiblePoints() {
@@ -934,6 +1193,7 @@ public static class GraphViewHtmlBuilder
         activeNodeKinds.add(targetKind);
         syncKindCheckboxes();
       }
+      ensureProjectVisibilityForNode(nodeId);
 
       selectedNodeId = nodeId;
       if (filterRelated) {
@@ -1097,6 +1357,7 @@ public static class GraphViewHtmlBuilder
     });
 
     initializeKindFilter();
+    initializeProjectFilter();
     applyOverlayPanelExpanded();
     applyNodeInfoPanelExpanded();
     updateFilterButtonState();
