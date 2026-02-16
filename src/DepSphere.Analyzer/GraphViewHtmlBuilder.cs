@@ -19,12 +19,28 @@ public static class GraphViewHtmlBuilder
   <style>
     html, body { margin: 0; padding: 0; overflow: hidden; background: #0b1220; }
     #dep-graph-canvas { width: 100vw; height: 100vh; display: block; }
+    .overlay-toggle {
+      position: fixed;
+      top: 12px;
+      z-index: 20;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(15, 23, 42, 0.88);
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #overlay-toggle { left: 12px; }
+    #node-info-toggle { right: 12px; }
     #overlay {
-      position: fixed; top: 12px; left: 12px; color: #e2e8f0;
+      position: fixed; top: 46px; left: 12px; color: #e2e8f0;
       background: rgba(15, 23, 42, 0.82); padding: 10px 12px; border-radius: 10px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
       border: 1px solid rgba(148, 163, 184, 0.25);
       min-width: 240px;
+      z-index: 10;
     }
     #overlay h1 {
       margin: 0 0 8px 0; font-size: 13px; font-weight: 600;
@@ -97,18 +113,23 @@ public static class GraphViewHtmlBuilder
       cursor: default;
     }
     #node-info {
-      position: fixed; right: 12px; top: 12px; color: #e2e8f0;
+      position: fixed; right: 12px; top: 46px; color: #e2e8f0;
       background: rgba(2, 6, 23, 0.82); padding: 10px 12px; border-radius: 10px;
       border: 1px solid rgba(148, 163, 184, 0.25);
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
       max-width: 340px;
       white-space: pre-wrap;
+      z-index: 10;
     }
     #node-info .title { font-weight: 600; margin-bottom: 6px; }
+    .overlay-hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
   <canvas id="dep-graph-canvas"></canvas>
+  <button id="overlay-toggle" class="overlay-toggle" type="button" aria-controls="overlay" aria-expanded="true">操作UIを隠す</button>
   <div id="overlay">
     <h1>DepSphere 3D Graph</h1>
     <div>シングルクリック: 接続ノードに限定</div>
@@ -138,6 +159,7 @@ public static class GraphViewHtmlBuilder
     </div>
     <div id="filter-status">表示中: 0/0</div>
   </div>
+  <button id="node-info-toggle" class="overlay-toggle" type="button" aria-controls="node-info" aria-expanded="true">ノード情報を隠す</button>
   <div id="node-info">
     <div class="title">ノード情報</div>
     <div id="node-info-body">ノードをクリックするとクラス名とメソッド名を表示します。</div>
@@ -147,6 +169,10 @@ public static class GraphViewHtmlBuilder
     window.__depSphereGraph = JSON.parse(atob("{{base64}}"));
 
     const canvas = document.getElementById('dep-graph-canvas');
+    const overlayPanel = document.getElementById('overlay');
+    const overlayToggleButton = document.getElementById('overlay-toggle');
+    const nodeInfoPanel = document.getElementById('node-info');
+    const nodeInfoToggleButton = document.getElementById('node-info-toggle');
     const infoBody = document.getElementById('node-info-body');
     const nodeScaleInput = document.getElementById('node-scale');
     const spreadScaleInput = document.getElementById('spread-scale');
@@ -157,6 +183,8 @@ public static class GraphViewHtmlBuilder
     const filterStatus = document.getElementById('filter-status');
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
+    let isOverlayVisible = true;
+    let isNodeInfoVisible = true;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1220);
@@ -199,6 +227,34 @@ public static class GraphViewHtmlBuilder
     const historyMax = 80;
     let historyIndex = -1;
     let isApplyingHistory = false;
+
+    function setPanelVisibility(panel, toggleButton, isVisible, hideLabel, showLabel) {
+      if (!panel || !toggleButton) {
+        return;
+      }
+
+      panel.classList.toggle('overlay-hidden', !isVisible);
+      toggleButton.textContent = isVisible ? hideLabel : showLabel;
+      toggleButton.setAttribute('aria-expanded', isVisible ? 'true' : 'false');
+    }
+
+    function applyOverlayPanelVisibility() {
+      setPanelVisibility(overlayPanel, overlayToggleButton, isOverlayVisible, '操作UIを隠す', '操作UIを表示');
+    }
+
+    function applyNodeInfoPanelVisibility() {
+      setPanelVisibility(nodeInfoPanel, nodeInfoToggleButton, isNodeInfoVisible, 'ノード情報を隠す', 'ノード情報を表示');
+    }
+
+    function toggleOverlayPanelVisibility() {
+      isOverlayVisible = !isOverlayVisible;
+      applyOverlayPanelVisibility();
+    }
+
+    function toggleNodeInfoPanelVisibility() {
+      isNodeInfoVisible = !isNodeInfoVisible;
+      applyNodeInfoPanelVisibility();
+    }
 
     function hexColor(color) {
       if (!color || !color.startsWith('#')) return 0x3b82f6;
@@ -736,6 +792,8 @@ public static class GraphViewHtmlBuilder
 
     nodeScaleInput.addEventListener('input', applyVisualSettings);
     spreadScaleInput.addEventListener('input', applyVisualSettings);
+    overlayToggleButton.addEventListener('click', toggleOverlayPanelVisibility);
+    nodeInfoToggleButton.addEventListener('click', toggleNodeInfoPanelVisibility);
     historyBackButton.addEventListener('click', () => navigateHistory(-1));
     historyForwardButton.addEventListener('click', () => navigateHistory(1));
     fitViewButton.addEventListener('click', fitVisibleNodes);
@@ -788,6 +846,8 @@ public static class GraphViewHtmlBuilder
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    applyOverlayPanelVisibility();
+    applyNodeInfoPanelVisibility();
     updateFilterButtonState();
     updateHistoryButtons();
     applyVisualSettings();
